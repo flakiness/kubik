@@ -1,12 +1,31 @@
 {
   "name": "kubik",
+  "type": "module",
   "version": "0.0.1",
   "description": "",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.js"
+    }
+  },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "@degulabs/build": "^0.0.1",
+    "@playwright/test": "^1.48.2",
+    "@types/node": "^22.9.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@flakiness/shared": "^0.0.4",
+    "js-sha256": "^0.11.0"
+  }
 }
