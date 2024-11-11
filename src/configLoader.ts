@@ -1,4 +1,5 @@
 import path from "path";
+import { RawConfigOptions } from "./import.js";
 import { spawnAsync } from "./process_utils.js";
 import { Brand } from "./utils.js";
 
@@ -9,13 +10,6 @@ export function toAbsolutePath(base: AbsolutePath, relative: string): AbsolutePa
   return path.resolve(base, relative) as AbsolutePath;
 }
 
-type RawConfigOptions = {
-  name?: string,
-  watch?: string | string[],
-  avoid?: string | string[],
-  deps?: string | string[],
-}
-
 type Config = {
   name?: string,
   watch: AbsolutePath[],
@@ -24,6 +18,7 @@ type Config = {
 }
 
 export type ReadConfigResult = {
+  configPath: AbsolutePath,
   error?: string,
   config?: Config,
 };
@@ -55,7 +50,7 @@ async function readSingleConfig(configPath: AbsolutePath): Promise<ReadConfigRes
     }
   });
   if (code !== 0)
-    return { error: 'failed to load configuration '};
+    return { configPath, error: 'failed to load configuration\n' + output};
   try {
     let { name, watch = [], avoid = [], deps = [] } = JSON.parse(output) as RawConfigOptions;
     if (!Array.isArray(watch))
@@ -66,16 +61,19 @@ async function readSingleConfig(configPath: AbsolutePath): Promise<ReadConfigRes
       deps = [deps];
     const configDir = path.dirname(configPath) as AbsolutePath;
     const resolveWRTConfig = toAbsolutePath.bind(null, configDir)
-    return {config: {
-      name,
-      watch: watch.map(resolveWRTConfig),
-      ignore: avoid.map(resolveWRTConfig),
-      deps: deps.map(resolveWRTConfig),
-    }}
+    return {
+      configPath,
+      config: {
+        name,
+        watch: watch.map(resolveWRTConfig),
+        ignore: avoid.map(resolveWRTConfig),
+        deps: deps.map(resolveWRTConfig),
+      }
+    };
   } catch (e) {
     const message = ['Failed to load config: ' + configPath];
     if (e instanceof Error)
       message.push(e.message);
-    return { error: message.join('\n') };
+    return { configPath, error: message.join('\n') };
   }
 }

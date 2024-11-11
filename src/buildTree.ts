@@ -55,6 +55,8 @@ type BuildTreeEvents = {
   'node_build_will_start': [string],
   'node_build_finished': [string],
   'node_build_aborted': [string],
+  'node_build_stdout': [string, string],
+  'node_build_stderr': [string, string],
 }
 
 export class BuildTree extends EventEmitter<BuildTreeEvents> {
@@ -324,12 +326,14 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
     if (node.build?.buildVersion !== buildVersion)
       return;
     node.build.stderr.push(line);
+    this.emit('node_build_stderr', node.nodeId, line);
   }
 
   private _onStdOut(node: Node, buildVersion: string, line: string) {
     if (node.build?.buildVersion !== buildVersion)
       return;
     node.build.stdout.push(line);
+    this.emit('node_build_stdout', node.nodeId, line);
   }
 }
 
