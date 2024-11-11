@@ -156,10 +156,7 @@ export class BuildTree extends EventEmitter<{ changed: [string], stale: [] }> {
         return;
 
       node.build?.abortController.abort();
-      if (node.build)
-        console.log(node)
-      // by default, reset build if there's none.
-      // This is a "pending" state.
+      // By default, reset build. The "no build" is encoded as "pending" state.
       node.build = undefined;
 
       for (const child of node.children)
