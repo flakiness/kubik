@@ -31,6 +31,17 @@ export type BuildOptions = {
   onStdErr: (line: string) => void,
 }
 
+export type BuildTreeOptions = {
+  buildCallback: (options: BuildOptions) => void,
+  mode: 'parallel'|'sequential',
+}
+
+export class CycleError extends Error {
+  constructor(public cycle: string[]) {
+    super('Dependency cycle detected');
+  }
+}
+
 export type BuildStatus = {
   status: 'pending'|'running'|'ok'|'fail',
   durationMs: number,
@@ -38,14 +49,37 @@ export type BuildStatus = {
   stderr: string,
 }
 
-export class BuildTree extends EventEmitter<{ changed: [string], stale: [] }> {
+type BuildTreeEvents = {
+  'changed': [string],
+  'completed': [],
+  'node_build_will_start': [string],
+  'node_build_finished': [string],
+  'node_build_aborted': [string],
+}
+
+export class BuildTree extends EventEmitter<BuildTreeEvents> {
   private _nodes = new Map<string, Node>();
   private _roots: Node[] = [];
-  private _staledVersion: string = '';
   private _buildBuildableTimeout?: NodeJS.Timeout;
-
-  constructor(private _buildCallback: (options: BuildOptions) => void) {
+  private _lastCompleteTreeVersion: string = '';
+  
+  constructor(private _options: BuildTreeOptions) {
     super();
+  }
+
+  /**
+   * The tree is "complete" if there's nothing to be built.
+   * However, every time tree is modified, the build has to be kicked off manually
+   * with the "startBuilding()" method.
+   * @returns 
+   */
+  treeBuildStatus(): 'complete'|'incomplete' {
+    const nodes = [...this._nodes.values()];
+    // We say that the tree is "complete", if there's nothing to be built: all built results are in.
+    // We consider the tree to be complete, if:
+    // All nodes that 
+    const isComplete = nodes.every(node => node.build && node.build.success !== undefined);
+    return isComplete ? 'complete' : 'incomplete';
   }
 
   buildStatus(nodeId: string): BuildStatus {
@@ -61,12 +95,43 @@ export class BuildTree extends EventEmitter<{ changed: [string], stale: [] }> {
     }
   }
 
-  setTree(tree: Multimap<string, string>) {
-    // Remove nodes that were dropped.
+  private _checkNoCycles(tree: Multimap<string, string>) {
+    const stackIndexes = new Map<string, number>();
+    const visited = new Set<string>();
+    const dfs = (nodeId: string, stack: string[] = []) => {
+      const stackIndex = stackIndexes.get(nodeId);
+      if (stackIndex !== undefined)
+        throw new CycleError(stack.slice(stackIndex));
+
+      if (visited.has(nodeId))
+        return;
+      visited.add(nodeId);
+
+      stackIndexes.set(nodeId, stack.push(nodeId) - 1);
+      for (const child of tree.getAll(nodeId))
+        dfs(child, stack);
+      stack.pop();
+      stackIndexes.delete(nodeId);
+    }
+    for (const key of tree.keys())
+      dfs(key);
+  }
+
+  /**
+   * Set build tree. This will synchronously abort builds for those nodes
+   * that were either removed or changed.
+   * @param tree 
+   */
+  setBuildTree(tree: Multimap<string, string>) {
+    this._checkNoCycles(tree);
+
+    // Remove nodes that were dropped, cancelling their build in the meantime.
     const nodeIds = new Set([...tree.values(), ...tree.keys()]);
-    for (const nodeId of this._nodes.keys()) {
-      if (!nodeIds.has(nodeId))
+    for (const [nodeId, node] of this._nodes) {
+      if (!nodeIds.has(nodeId)) {
+        this._abortBuild(node);
         this._nodes.delete(nodeId);
+      }
     }
     this._roots = [];
 
@@ -98,28 +163,28 @@ export class BuildTree extends EventEmitter<{ changed: [string], stale: [] }> {
 
     // Figure out roots
     this._roots = [...this._nodes.values()].filter(node => !node.parents.length);
-    assert(this._roots.length, 'Build tree does not have roots');
 
     this._computeSubtreeSha();
-    
-    // Finally, initiate build
-    this._scheduleBuildBuildable();
   }
 
   private _computeSubtreeSha() {
-    const visited = new Set<Node>();
     const dfs = (node: Node) => {
-      assert(!visited.has(node), 'Cycle detected');
-      visited.add(node);
       node.children.sort((a, b) => a.nodeId < b.nodeId ? -1 : 1);
       for (const child of node.children)
         dfs(child);
-      node.subtreeSha = sha256([node.nodeId, ...node.children.map(child => child.subtreeSha)]);
-      visited.delete(node);
+      const subtreeSha = sha256([node.nodeId, ...node.children.map(child => child.subtreeSha)]);
+      if (node.subtreeSha !== subtreeSha) {
+        node.subtreeSha = subtreeSha;
+        this._abortBuild(node);
+      }
     }
     this._roots.sort((a, b) => a.nodeId < b.nodeId ? -1 : 1);
     for (const root of this._roots)
       dfs(root);
+  }
+
+  private _treeVersion(): string {
+    return sha256(this._roots.map(nodeVersion));
   }
 
   markChanged(nodeId: string) {
@@ -130,12 +195,15 @@ export class BuildTree extends EventEmitter<{ changed: [string], stale: [] }> {
       if (visited.has(node))
         return;
       visited.add(node);
+      this._abortBuild(node);
       ++node.generation;
       for (const parent of node.parents)
         dfs(parent);
     }
     dfs(node);
+  }
 
+  startBuilding() {
     this._scheduleBuildBuildable();
   }
 
@@ -144,20 +212,25 @@ export class BuildTree extends EventEmitter<{ changed: [string], stale: [] }> {
       this._buildBuildableTimeout = setTimeout(this._buildBuildable.bind(this), 10);
   }
 
+  // This method will change node.build accordingly:
+  // - for those projects that were running builds, but the node's version have changed,
+  //   the builds will be canceled.
+  // - for those projcets that can start running builds, these builds will be initiated.
   private _buildBuildable() {
     this._buildBuildableTimeout = undefined;
 
     const visited = new Set<Node>();
+    const nodesToBeBuilt: Node[] = [];
     const startStopBuilds = (node: Node) => {
       if (visited.has(node))
         return;
       visited.add(node);
-      if (currentBuildVersion(node) === node.build?.buildVersion)
+      if (nodeVersion(node) === node.build?.buildVersion)
         return;
 
-      node.build?.abortController.abort();
-      // By default, reset build. The "no build" is encoded as "pending" state.
-      node.build = undefined;
+      // By default, cancel build if any and RESET BUILD. The "node.build = undefined"
+      // means that the build for this node is pending.
+      this._abortBuild(node);
 
       for (const child of node.children)
         startStopBuilds(child);
@@ -166,33 +239,75 @@ export class BuildTree extends EventEmitter<{ changed: [string], stale: [] }> {
       if (!node.children.every(isSuccessfulCurrentBuild))
         return;
 
-      // Otherwise, start building this node.
-      node.build = {
-        abortController: new AbortController(),
-        buildVersion: currentBuildVersion(node),
-        stdout: [],
-        stderr: [],
-        startTimestampMs: Date.now(),
-        durationMs: 0,
-      };
-      this._buildCallback.call(null, {
-        nodeId: node.nodeId,
-        onComplete: this._onBuildComplete.bind(this, node, node.build.buildVersion),
-        onStdErr: this._onStdErr.bind(this, node, node.build.buildVersion),
-        onStdOut: this._onStdOut.bind(this, node, node.build.buildVersion),
-        signal: node.build.abortController.signal,
-      });
-      this.emit('changed', node.nodeId);
+      nodesToBeBuilt.push(node);
     }
     for (const root of this._roots)
       startStopBuilds(root);
 
-    const isStale = [...this._nodes.values()].every(node => !node.build || node.build.success !== undefined);
-    const treeBuildVersion = sha256(this._roots.map(currentBuildVersion));
-    if (isStale && this._staledVersion !== treeBuildVersion) {
-      this._staledVersion = treeBuildVersion;
-      this.emit('stale');
+    if (nodesToBeBuilt.length) {
+      if (this._options.mode === 'parallel') {
+        // Parallel mode: start building all nodes that could be built.
+        for (const node of nodesToBeBuilt)
+          this._startBuild(node);  
+      } else {
+        // In sequential mode, we check if we building anything right now, and then build the first one only.
+        const isBuilding = [...this._nodes.values()].some(node => node.build && node.build.success === undefined);
+        if (!isBuilding)
+          this._startBuild(nodesToBeBuilt[0]);
+      }
     }
+
+    const treeVersion = this._treeVersion();
+    if (this.treeBuildStatus() === 'complete' && this._lastCompleteTreeVersion !== treeVersion) {
+      this._lastCompleteTreeVersion = treeVersion;
+      this.emit('completed');
+    }
+  }
+
+  private _abortBuild(node: Node) {
+    // For the up-to-date build, we record its result.
+    // Otherwise, we mark the node's build as pending.
+    // NOTE: we have to emit events only if we do changes to node's status.
+    if (nodeVersion(node) === node.build?.buildVersion) {
+      if (node.build.success === undefined) {
+        node.build.abortController.abort();
+        node.build.success = false;
+        node.build.durationMs = Date.now() - node.build.startTimestampMs;
+        this.emit('changed', node.nodeId);
+        this.emit('node_build_aborted', node.nodeId);
+      }
+    } else {
+      if (node.build !== undefined) {
+        // Abort only running builds.
+        if (node.build.success === undefined) {
+          node.build.abortController.abort();
+          this.emit('node_build_aborted', node.nodeId);
+        }
+        node.build = undefined;
+        this.emit('changed', node.nodeId);
+      }
+    }
+  }
+
+  private _startBuild(node: Node) {
+    assert(!node.build);
+    this.emit('node_build_will_start', node.nodeId);
+    node.build = {
+      abortController: new AbortController(),
+      buildVersion: nodeVersion(node),
+      stdout: [],
+      stderr: [],
+      startTimestampMs: Date.now(),
+      durationMs: 0,
+    };
+    this._options.buildCallback.call(null, {
+      nodeId: node.nodeId,
+      onComplete: this._onBuildComplete.bind(this, node, node.build.buildVersion),
+      onStdErr: this._onStdErr.bind(this, node, node.build.buildVersion),
+      onStdOut: this._onStdOut.bind(this, node, node.build.buildVersion),
+      signal: node.build.abortController.signal,
+    });
+    this.emit('changed', node.nodeId);
   }
 
   private _onBuildComplete(node: Node, buildVersion: string, success: boolean) {
@@ -201,6 +316,7 @@ export class BuildTree extends EventEmitter<{ changed: [string], stale: [] }> {
     node.build.success = success;
     node.build.durationMs = Date.now() - node.build.startTimestampMs;
     this.emit('changed', node.nodeId);
+    this.emit('node_build_finished', node.nodeId);
     this._scheduleBuildBuildable();
   }
 
@@ -218,9 +334,9 @@ export class BuildTree extends EventEmitter<{ changed: [string], stale: [] }> {
 }
 
 function isSuccessfulCurrentBuild(node: Node) {
-  return currentBuildVersion(node) === node.build?.buildVersion && node.build.success;
+  return nodeVersion(node) === node.build?.buildVersion && node.build.success;
 }
 
-function currentBuildVersion(node: Node): string {
+function nodeVersion(node: Node): string {
   return sha256([node.generation + '', node.subtreeSha]);
 }
