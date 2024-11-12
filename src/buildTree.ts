@@ -49,8 +49,10 @@ export class CycleError extends Error {
   }
 }
 
-export type BuildStatus = {
-  status: 'pending'|'running'|'ok'|'fail',
+export type BuildStatus = 'n/a'|'pending'|'running'|'ok'|'fail';
+
+export type BuildInfo = {
+  status: BuildStatus,
   durationMs: number,
   output: string,
 }
@@ -73,16 +75,17 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
     super();
   }
 
-  buildStatus(nodeId: string): BuildStatus {
+  buildInfo(nodeId: string): BuildInfo {
     const node = this._nodes.get(nodeId);
     assert(node, `Cannot get status for non-existing node with id "${nodeId}"`);
     return {
-      status: !node.build ? 'pending' :
+      status: !node.build && this._computeTreeVersion() === this._lastCompleteTreeVersion ? 'n/a' :
+              !node.build ? 'pending' :
               node.build && node.build.success === undefined ? 'running' :
               node.build && node.build.success ? 'ok' : 'fail',
       durationMs: node.build?.success ? node.build.durationMs : 0,
       output: node.build?.output.join('') ?? '',
-    }
+    };
   }
 
   private _checkNoCycles(tree: Multimap<string, string>) {

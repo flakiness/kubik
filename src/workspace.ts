@@ -2,7 +2,7 @@ import { spawn } from "child_process";
 import chokidar, { FSWatcher } from "chokidar";
 import EventEmitter from "events";
 import path from "path";
-import { BuildOptions, BuildTree, CycleError } from "./buildTree.js";
+import { BuildOptions, BuildStatus, BuildTree, CycleError } from "./buildTree.js";
 import { AbsolutePath, ReadConfigResult, readConfigTree, toAbsolutePath } from "./configLoader.js";
 import { Multimap } from "./multimap.js";
 import { killProcessTree } from "./process_utils.js";
@@ -31,7 +31,7 @@ type WorkspaceOptions = {
 
 export type Project = {
   name: string;
-  status: 'pending'|'running'|'ok'|'fail',
+  status: BuildStatus,
   durationMs: number,
   output: string,
 }
@@ -76,7 +76,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
 
   private _nodeIdToProject(nodeId: string): Project {
     const config = this._configs.get(nodeId as AbsolutePath)!;
-    const status = this._buildTree.buildStatus(nodeId);
+    const status = this._buildTree.buildInfo(nodeId);
     const name = config.config?.name ? config.config.name : path.relative(process.cwd(), config.configPath);
     return {
       name,
@@ -150,10 +150,10 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
   }
 
   async stop() {
+    clearTimeout(this._updateData?.timeout);
     this._watchMode = false;
     this._buildTree.resetAllBuilds();
     await this._reinitializeFileWatcher();
-    clearTimeout(this._updateData?.timeout);
   }
 
   private async _doUpdate() {

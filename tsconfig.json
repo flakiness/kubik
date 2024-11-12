@@ -2,7 +2,6 @@
   "include": ["src", "tests"],
   "exclude": ["lib"],
   "compilerOptions": {
-    "jsx": "react-jsx",
     "emitDeclarationOnly": true,
     "declaration": true,
     "declarationDir": "./types",

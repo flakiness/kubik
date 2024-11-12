@@ -12,28 +12,29 @@ program
   .option('-w, --watch', 'Watch files for changes')
   .arguments('<files...>')
   .action((files: string[], options: { jobs?: number, watch?: boolean }) => {
+    const roots = files.map(file => path.resolve(process.cwd(), file)) as AbsolutePath[];
     if (options.watch)
-      startWatchApp(files, options.jobs ?? Infinity)
+      startWatchApp(roots, options.jobs ?? Infinity)
     else 
-      cliBuild(files, options.jobs ?? Infinity);
+      cliBuild(roots, options.jobs ?? Infinity);
   });
 
 program.parse();
 
-function cliBuild(roots: string[], jobs: number) {
-  const projectBuilder = new Workspace({
+function cliBuild(roots: AbsolutePath[], jobs: number) {
+  const workspace = new Workspace({
     jobs,
     watchMode: false,
   });
 
-  projectBuilder.setRoots(roots.map(root => path.resolve(process.cwd(), root) as AbsolutePath));
-  
-  projectBuilder.on('project_stderr', (project, text) => {
+  workspace.setRoots(roots);
+
+  workspace.on('project_stderr', (project, text) => {
     for (const line of text.trim().split('\n'))
       console.error(`[${project.name}] ${line}`)
   });
 
-  projectBuilder.on('project_stdout', (project, text) => {
+  workspace.on('project_stdout', (project, text) => {
     for (const line of text.trim().split('\n'))
       console.log(`[${project.name}] ${line}`)
   });
