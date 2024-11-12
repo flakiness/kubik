@@ -33,7 +33,7 @@ export type BuildOptions = {
 
 export type BuildTreeOptions = {
   buildCallback: (options: BuildOptions) => void,
-  mode: 'parallel'|'sequential',
+  parallelization: number,
 }
 
 export class CycleError extends Error {
@@ -222,7 +222,7 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
     this._buildBuildableTimeout = undefined;
 
     const visited = new Set<Node>();
-    const nodesToBeBuilt: Node[] = [];
+    const allNodesToBeBuilt: Node[] = [];
     const startStopBuilds = (node: Node) => {
       if (visited.has(node))
         return;
@@ -241,23 +241,15 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
       if (!node.children.every(isSuccessfulCurrentBuild))
         return;
 
-      nodesToBeBuilt.push(node);
+      allNodesToBeBuilt.push(node);
     }
     for (const root of this._roots)
       startStopBuilds(root);
 
-    if (nodesToBeBuilt.length) {
-      if (this._options.mode === 'parallel') {
-        // Parallel mode: start building all nodes that could be built.
-        for (const node of nodesToBeBuilt)
-          this._startBuild(node);  
-      } else {
-        // In sequential mode, we check if we building anything right now, and then build the first one only.
-        const isBuilding = [...this._nodes.values()].some(node => node.build && node.build.success === undefined);
-        if (!isBuilding)
-          this._startBuild(nodesToBeBuilt[0]);
-      }
-    }
+    const runningBuildsCount = [...this._nodes.values()].filter(node => this.buildStatus(node.nodeId).status === 'running').length;
+    const nodesToBuildCount = Math.min(allNodesToBeBuilt.length, this._options.parallelization - runningBuildsCount);
+    for (const node of allNodesToBeBuilt.slice(0, Math.max(0, nodesToBuildCount)))
+      this._startBuild(node);  
 
     const treeVersion = this._treeVersion();
     if (this.treeBuildStatus() === 'complete' && this._lastCompleteTreeVersion !== treeVersion) {

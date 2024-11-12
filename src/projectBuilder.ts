@@ -26,7 +26,7 @@ function renderCycleError(error: CycleError) {
 
 type ProjectBuilderOptions = {
   watchMode: boolean,
-  buildMode: 'parallel'|'sequential',
+  parallelization: number,
 };
 
 
@@ -55,7 +55,7 @@ export class ProjectBuilder extends EventEmitter<ProjectBuilderEvents> {
     this._watchMode = options.watchMode;
     this._buildTree = new BuildTree({
       buildCallback: this._build.bind(this),
-      mode: options.buildMode,
+      parallelization: options.parallelization,
     });
 
     this._buildTree.on('changed', (nodeId) => {
