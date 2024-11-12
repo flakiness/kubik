@@ -118,7 +118,8 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
 
   abort() {
     for (const node of this._nodes.values())
-      this.markChanged(node.nodeId);
+      this._abortBuild(node);
+      //this.markChanged(node.nodeId);
   }
 
   /**

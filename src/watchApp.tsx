@@ -1,6 +1,5 @@
 import { withFullScreen } from 'fullscreen-ink';
 import { Box, Text, useInput } from 'ink';
-import useStdoutDimensions from 'ink-use-stdout-dimensions';
 import path from 'path';
 import { useEffect, useState } from 'react';
 import { BuildStatus } from './buildTree.js';
@@ -63,7 +62,6 @@ const ProjectView = ({ projectBuilder, project }: { projectBuilder: ProjectBuild
   const [buildStatus, setBuildStatus] = useState(status.status);
   const [output, setOutput] = useState(status.output);
   const [duration, setDuration] = useState(status.durationMs);
-  const [columns, rows] = useStdoutDimensions();
 
   useEffect(() => {
     const listener = (changedPoject: ReadConfigResult, status: BuildStatus) => {
@@ -79,7 +77,6 @@ const ProjectView = ({ projectBuilder, project }: { projectBuilder: ProjectBuild
   }, []);
 
   const name = projectName(project);
-  const left = Math.floor((columns - name.length) / 2);
   const color = buildStatus === 'fail' ? 'red' :
                 buildStatus === 'ok' ? 'green' :
                 buildStatus === 'running' ? 'yellow' : 'gray';

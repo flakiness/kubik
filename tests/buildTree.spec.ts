@@ -422,3 +422,22 @@ test('check build order', async () => {
     'root',
   ]);
 });
+
+test('should abort only once', async () => {
+  const tree = new BuildTree({ buildCallback: () => {}, parallelization: Infinity });
+  const logger = new Logger(tree);
+  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+    'root': [],
+  })));
+  tree.startBuilding();
+  await onStarted(tree, ['root']);
+  expect(logger.pull()).toEqual([
+    'started: root',
+  ]);
+
+  tree.abort();
+  tree.abort();
+  expect(logger.pull()).toEqual([
+    'aborted: root',
+  ]);
+});
