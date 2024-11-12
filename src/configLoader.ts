@@ -52,11 +52,11 @@ async function readSingleConfig(configPath: AbsolutePath): Promise<ReadConfigRes
   if (code !== 0)
     return { configPath, error: 'failed to load configuration\n' + output};
   try {
-    let { name, watch = [], avoid = [], deps = [] } = JSON.parse(output) as RawConfigOptions;
+    let { name, watch = [], ignore = [], deps = [] } = JSON.parse(output) as RawConfigOptions;
     if (!Array.isArray(watch))
       watch = [watch];
-    if (!Array.isArray(avoid))
-      avoid = [avoid];
+    if (!Array.isArray(ignore))
+      ignore = [ignore];
     if (!Array.isArray(deps))
       deps = [deps];
     const configDir = path.dirname(configPath) as AbsolutePath;
@@ -66,7 +66,7 @@ async function readSingleConfig(configPath: AbsolutePath): Promise<ReadConfigRes
       config: {
         name,
         watch: watch.map(resolveWRTConfig),
-        ignore: avoid.map(resolveWRTConfig),
+        ignore: ignore.map(resolveWRTConfig),
         deps: deps.map(resolveWRTConfig),
       }
     };

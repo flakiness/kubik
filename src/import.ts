@@ -1,7 +1,7 @@
 export type RawConfigOptions = {
   name?: string,
   watch?: string | string[],
-  avoid?: string | string[],
+  ignore?: string | string[],
   deps?: string | string[],
 }
 
