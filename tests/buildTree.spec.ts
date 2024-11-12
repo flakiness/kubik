@@ -406,3 +406,19 @@ test('make sure that node build is reset when deps are changed', async () => {
   })));
   expect(tree.buildStatus('root').status).toBe('pending');
 });
+
+test('check build order', async () => {
+  const tree = new BuildTree({ buildCallback: asyncBuild, parallelization: Infinity });
+  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+    'root': ['dep-1', 'dep-2'],
+    'dep-1': ['leaf-1', 'leaf-2', 'leaf-3'],
+  })));
+  expect(tree.buildOrder()).toEqual([
+    'leaf-1',
+    'leaf-2',
+    'leaf-3',
+    'dep-1',
+    'dep-2',
+    'root',
+  ]);
+});

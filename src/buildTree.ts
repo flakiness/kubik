@@ -189,6 +189,22 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
     return sha256(this._roots.map(nodeVersion));
   }
 
+  buildOrder(): string[] {
+    const result: string[] = [];
+    const visited = new Set<Node>();
+    const dfs = (node: Node) => {
+      if (visited.has(node))
+        return;
+      visited.add(node);
+      for (const child of node.children)
+        dfs(child);
+      result.push(node.nodeId);
+    }
+    for (const root of this._roots)
+      dfs(root);
+    return result;
+  }
+
   markChanged(nodeId: string) {
     const node = this._nodes.get(nodeId);
     assert(node, `cannot mark changed a node ${nodeId} that does not exist`);

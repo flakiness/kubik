@@ -42,4 +42,3 @@ function cliBuild(roots: string[], parallelization: number) {
       console.log(`[${configName(config)}] ${line}`)
   });
 }
-
