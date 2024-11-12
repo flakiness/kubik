@@ -32,8 +32,13 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
+    "@types/react": "^18.3.12",
     "chokidar": "^4.0.1",
     "commander": "^12.1.0",
-    "js-sha256": "^0.11.0"
+    "fullscreen-ink": "^0.0.2",
+    "ink": "^5.0.1",
+    "ink-use-stdout-dimensions": "^1.0.5",
+    "js-sha256": "^0.11.0",
+    "react": "^18.3.1"
   }
 }

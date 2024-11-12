@@ -2,7 +2,7 @@ import { spawn } from "child_process";
 import chokidar, { FSWatcher } from "chokidar";
 import EventEmitter from "events";
 import path from "path";
-import { BuildOptions, BuildTree, CycleError } from "./buildTree.js";
+import { BuildOptions, BuildStatus, BuildTree, CycleError } from "./buildTree.js";
 import { AbsolutePath, ReadConfigResult, readConfigTree, toAbsolutePath } from "./configLoader.js";
 import { Multimap } from "./multimap.js";
 import { killProcessTree } from "./process_utils.js";
@@ -29,10 +29,10 @@ type ProjectBuilderOptions = {
   parallelization: number,
 };
 
-
 type ProjectBuilderEvents = {
-  'changed': [ReadConfigResult],
+  'changed': [ReadConfigResult, BuildStatus],
   'completed': [],
+  'projects_changed': [],
   'project_build_will_start': [ReadConfigResult],
   'project_build_finished': [ReadConfigResult],
   'project_build_aborted': [ReadConfigResult],
@@ -60,7 +60,8 @@ export class ProjectBuilder extends EventEmitter<ProjectBuilderEvents> {
 
     this._buildTree.on('changed', (nodeId) => {
       const result = this._configs.get(nodeId as AbsolutePath)!;
-      this.emit('changed', result);
+      const status = this._buildTree.buildStatus(nodeId);
+      this.emit('changed', result, status);
     });
     this._buildTree.on('completed', () => {
       this.emit('completed');
@@ -87,19 +88,28 @@ export class ProjectBuilder extends EventEmitter<ProjectBuilderEvents> {
     });
   }
 
+  projects(): ReadConfigResult[] {
+    const nodeIds = this._buildTree.buildOrder();
+    return nodeIds.map(nodeId => this._configs.get(nodeId as AbsolutePath)!);
+  }
+
+  projectStatus(project: ReadConfigResult): BuildStatus {
+    return this._buildTree.buildStatus(project.configPath);
+  }
+
   setRoots(roots: AbsolutePath[]) {
     this._roots = roots;
     this._scheduleUpdate({ needsRereadConfigFiles: true });
   }
 
   private async _reinitializeFileWatcher() {
-    if (!this._watchMode)
-      return false;
-
     for (const [nodeId, fileWatcher] of this._fileWatchers)
       fileWatcher.removeAllListeners();
     await Promise.all([...this._fileWatchers.values()].map(fsWatcher => fsWatcher.close()));
     this._fileWatchers.clear();
+
+    if (!this._watchMode)
+      return false;
 
     // list of all paths to watch and ignore
     for (const [configPath, result] of this._configs) {
@@ -125,6 +135,7 @@ export class ProjectBuilder extends EventEmitter<ProjectBuilderEvents> {
       fileWatcher.on('all', (eventType: string, filePath?: string) => {
         this._scheduleUpdate({ changedConfig: configPath, needsRereadConfigFiles: configPath === filePath });
       });
+      this._fileWatchers.set(configPath, fileWatcher);
     }
   }
 
@@ -142,6 +153,13 @@ export class ProjectBuilder extends EventEmitter<ProjectBuilderEvents> {
       this._updateData.changedConfigs.add(options.changedConfig);
     if (options.needsRereadConfigFiles)
       this._updateData.needsRereadConfigFiles = true;
+  }
+
+  async stop() {
+    this._watchMode = false;
+    this._buildTree.abort();
+    await this._reinitializeFileWatcher();
+    clearTimeout(this._updateData?.timeout);
   }
 
   private async _doUpdate() {
@@ -184,6 +202,7 @@ export class ProjectBuilder extends EventEmitter<ProjectBuilderEvents> {
     }
     this._buildTree.setBuildTree(projectTree);
     this._reinitializeFileWatcher();
+    this.emit('projects_changed');
   }
 
   private _build(options: BuildOptions) {
@@ -203,6 +222,7 @@ export class ProjectBuilder extends EventEmitter<ProjectBuilderEvents> {
         KUBIK_RUNNER: '1',
       },
       windowsHide: true,
+      detached: true,
     });
     subprocess.stdout.on('data', data => options.onStdOut(data.toString('utf8')));
     subprocess.stderr.on('data', data => options.onStdErr(data.toString('utf8')));

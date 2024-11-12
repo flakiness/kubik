@@ -5,8 +5,7 @@ import { Multimap } from "./multimap.js";
 import { sha256 } from "./utils.js";
 
 type Build = {
-  stdout: string[],
-  stderr: string[],
+  output: string[],
   success?: boolean,
   abortController: AbortController,
   startTimestampMs: number,
@@ -45,8 +44,7 @@ export class CycleError extends Error {
 export type BuildStatus = {
   status: 'pending'|'running'|'ok'|'fail',
   durationMs: number,
-  stdout: string,
-  stderr: string,
+  output: string,
 }
 
 type BuildTreeEvents = {
@@ -92,8 +90,7 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
               node.build && node.build.success === undefined ? 'running' :
               node.build && node.build.success ? 'ok' : 'fail',
       durationMs: node.build?.success ? node.build.durationMs : 0,
-      stderr: node.build?.stderr.join('\n') ?? '',
-      stdout: node.build?.stdout.join('\n') ?? '',
+      output: node.build?.output.join('') ?? '',
     }
   }
 
@@ -117,6 +114,11 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
     }
     for (const key of tree.keys())
       dfs(key);
+  }
+
+  abort() {
+    for (const node of this._nodes.values())
+      this.markChanged(node.nodeId);
   }
 
   /**
@@ -213,8 +215,8 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
       if (visited.has(node))
         return;
       visited.add(node);
-      this._abortBuild(node);
       ++node.generation;
+      this._abortBuild(node);
       for (const parent of node.parents)
         dfs(parent);
     }
@@ -305,8 +307,7 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
     node.build = {
       abortController: new AbortController(),
       buildVersion: nodeVersion(node),
-      stdout: [],
-      stderr: [],
+      output: [],
       startTimestampMs: Date.now(),
       durationMs: 0,
     };
@@ -333,14 +334,14 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
   private _onStdErr(node: Node, buildVersion: string, line: string) {
     if (node.build?.buildVersion !== buildVersion)
       return;
-    node.build.stderr.push(line);
+    node.build.output.push(line);
     this.emit('node_build_stderr', node.nodeId, line);
   }
 
   private _onStdOut(node: Node, buildVersion: string, line: string) {
     if (node.build?.buildVersion !== buildVersion)
       return;
-    node.build.stdout.push(line);
+    node.build.output.push(line);
     this.emit('node_build_stdout', node.nodeId, line);
   }
 }

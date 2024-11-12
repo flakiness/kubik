@@ -20,6 +20,7 @@ const { errors } = await esbuild.build({
   color: true,
   entryPoints: [
     path.join(srcDir, '**/*.ts'),
+    path.join(srcDir, '**/*.tsx'),
   ],
   outdir: outDir,
   format: 'esm',

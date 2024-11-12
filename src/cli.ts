@@ -4,6 +4,7 @@ import { program } from "commander";
 import path from "path";
 import { AbsolutePath, ReadConfigResult } from "./configLoader.js";
 import { ProjectBuilder } from "./projectBuilder.js";
+import { startWatchApp } from "./watchApp.js";
 
 program
   .description('Start build')
@@ -11,10 +12,10 @@ program
   .option('-w, --watch', 'Watch files for changes')
   .arguments('<files...>')
   .action((files: string[], options: { jobs?: number, watch?: boolean }) => {
-    if (options.watch) {
-      console.log('Watch mode is enabled');
-    }
-    cliBuild(files, options.jobs ?? Infinity);
+    if (options.watch)
+      startWatchApp(files, options.jobs ?? Infinity)
+    else 
+      cliBuild(files, options.jobs ?? Infinity);
   });
 
 program.parse();
