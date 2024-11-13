@@ -90,6 +90,8 @@ console.log('Done.')
 
 ```js
 // build-third-party.mjs
+import { BuildScript } from 'kubik';
+
 BuildScript.initialize(import.meta);
 
 console.log('Copied third-party!');
@@ -103,6 +105,9 @@ npx kubik ./build-main.mjs
 
 ## Watch Mode
 
+<img width="600" alt="Screenshot 2024-11-13 at 11 24 57 AM" src="https://github.com/user-attachments/assets/3cf03c48-0081-42f1-9f29-a79c905f9afb">
+
+
 Kubik supports watch mode. You can supply `watch` and `ignore` options to the `BuildScript.initialize` to
 customize the watch mode behavior, and launch it later with `-w, --watch` flag.
 
@@ -111,6 +116,8 @@ By default, Kubik watches for changes in files commonly involved in build tasks,
 * `package.json`
 * `package-lock.json`
 * `tsconfig.json`
+
+However, you can customize files and directories to watch and to ignore during BuildScript initialization:
 
 ```js
 import { BuildScript } from 'kubik';
@@ -121,6 +128,10 @@ BuildScript.initialize(import.meta, {
   ignore: ['./src/generated'],  // these are relative to script folder too
 });
 ```
+
+Once launched, the watch mode shows progress, duration and logs from all the tasks.
+* To focus panel with task output, use `Tab` and `Shift-Tab` shortcuts
+* To scroll logs, use arrows, `j`, `k`, `Ctrl-U`, `Ctrl-D`, `gg` and `Shift-G`.
 
 ## Parallelization
 
