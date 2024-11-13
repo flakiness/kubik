@@ -177,14 +177,8 @@ class Layout {
         this._views[focusedIndex].blur();
       this._views[newFocused].focus();
       this.render();
-      // ????
-      // const allFailingViews = this._views.filter(view => view.project().buildResult() === 'FAIL' && view.project().buildStage() === 'DONE');
-      // const focusedIndex = allFailingViews.findIndex(view => view.isFocused());
-      // if (focusedIndex === -1)
-      //   return;
-      // allFailingViews[(focusedIndex + 1) % allFailingViews.length].focus();
-      // this.render();
     });
+
     // Quit on Escape, q, or Control-C.
     this._screen.key(['escape', 'q', 'C-c'], (ch, key) => {
       this._workspace.stop();
