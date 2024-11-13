@@ -2,7 +2,7 @@ import { spawn } from "child_process";
 import chokidar, { FSWatcher } from "chokidar";
 import EventEmitter from "events";
 import path from "path";
-import { BuildOptions, BuildStatus, BuildTree, CycleError } from "./buildTree.js";
+import { BuildOptions, BuildTree, CycleError } from "./buildTree.js";
 import { AbsolutePath, ReadConfigResult, readConfigTree, toAbsolutePath } from "./configLoader.js";
 import { Multimap } from "./multimap.js";
 import { killProcessTree } from "./process_utils.js";
@@ -26,7 +26,7 @@ function renderCycleError(error: CycleError) {
 
 type WorkspaceOptions = {
   watchMode: boolean,
-  parallelization: number,
+  jobs: number,
 };
 
 export type Project = {
@@ -37,14 +37,9 @@ export type Project = {
 }
 
 type WorkspaceEvents = {
-  'changed': [ReadConfigResult, BuildStatus],
-  'completed': [],
-  'projects_changed': [],
-  'project_build_will_start': [ReadConfigResult],
-  'project_build_finished': [ReadConfigResult],
-  'project_build_aborted': [ReadConfigResult],
-  'project_build_stdout': [ReadConfigResult, string],
-  'project_build_stderr': [ReadConfigResult, string],
+  'changed': [],
+  'project_stdout': [Project, string],
+  'project_stderr': [Project, string],
 }
 
 export class Workspace extends EventEmitter<WorkspaceEvents> {
@@ -62,52 +57,38 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     this._watchMode = options.watchMode;
     this._buildTree = new BuildTree({
       buildCallback: this._build.bind(this),
-      jobs: options.parallelization,
+      jobs: options.jobs,
     });
 
-    this._buildTree.on('changed', (nodeId) => {
-      const result = this._configs.get(nodeId as AbsolutePath)!;
-      const status = this._buildTree.buildStatus(nodeId);
-      this.emit('changed', result, status);
-    });
-    this._buildTree.on('completed', () => {
-      this.emit('completed');
-    });
-    this._buildTree.on('node_build_will_start', (nodeId) => {
-      const result = this._configs.get(nodeId as AbsolutePath)!;
-      this.emit('project_build_will_start', result);
-    });
-    this._buildTree.on('node_build_aborted', (nodeId) => {
-      const result = this._configs.get(nodeId as AbsolutePath)!;
-      this.emit('project_build_aborted', result);
-    });
-    this._buildTree.on('node_build_finished', (nodeId) => {
-      const result = this._configs.get(nodeId as AbsolutePath)!;
-      this.emit('project_build_finished', result);
-    });
+    this._buildTree.on('node_build_started', () => this.emit('changed'));
+    this._buildTree.on('node_build_aborted', () => this.emit('changed'));
+    this._buildTree.on('node_build_finished', () => this.emit('changed'));
+
     this._buildTree.on('node_build_stderr', (nodeId, line) => {
-      const result = this._configs.get(nodeId as AbsolutePath)!;
-      this.emit('project_build_stderr', result, line);
+      this.emit('project_stderr', this._nodeIdToProject(nodeId), line);
+      this.emit('changed');
     });
     this._buildTree.on('node_build_stdout', (nodeId, line) => {
-      const result = this._configs.get(nodeId as AbsolutePath)!;
-      this.emit('project_build_stdout', result, line);
+      this.emit('project_stdout', this._nodeIdToProject(nodeId), line);
+      this.emit('changed');
     });
+  }
+
+  private _nodeIdToProject(nodeId: string): Project {
+    const config = this._configs.get(nodeId as AbsolutePath)!;
+    const status = this._buildTree.buildStatus(nodeId);
+    const name = config.config?.name ? config.config.name : path.relative(process.cwd(), config.configPath);
+    return {
+      name,
+      durationMs: status.durationMs,
+      output: status.output,
+      status: status.status,
+    } as Project;
   }
 
   projects(): Project[] {
     const nodeIds = this._buildTree.buildOrder();
-    return nodeIds.map(nodeId => {
-      const config = this._configs.get(nodeId as AbsolutePath)!;
-      const status = this._buildTree.buildStatus(nodeId);
-      const name = config.config?.name ? config.config.name : path.relative(process.cwd(), config.configPath);
-      return {
-        name,
-        durationMs: status.durationMs,
-        output: status.output,
-        status: status.status,
-      } as Project;
-    });
+    return nodeIds.map(nodeId => this._nodeIdToProject(nodeId));
   }
 
   setRoots(roots: AbsolutePath[]) {
@@ -215,7 +196,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     }
     this._buildTree.setBuildTree(projectTree);
     this._reinitializeFileWatcher();
-    this.emit('projects_changed');
+    this.emit('changed');
   }
 
   private _build(options: BuildOptions) {

@@ -127,7 +127,7 @@ const WatchApp = ({ projectBuilder }: { projectBuilder: Workspace }) => {
 
 export function startWatchApp(roots: string[], parallelization: number) {
   const projectBuilder = new Workspace({
-    parallelization,
+    jobs: parallelization,
     watchMode: true,
   });
 

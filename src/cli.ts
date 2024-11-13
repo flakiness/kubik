@@ -2,7 +2,7 @@
 
 import { program } from "commander";
 import path from "path";
-import { AbsolutePath, ReadConfigResult } from "./configLoader.js";
+import { AbsolutePath } from "./configLoader.js";
 import { startWatchApp } from "./watchApp.js";
 import { Workspace } from "./workspace.js";
 
@@ -20,26 +20,21 @@ program
 
 program.parse();
 
-function cliBuild(roots: string[], parallelization: number) {
-  function configName(config: ReadConfigResult) {
-    if (config.config?.name)
-      return config.config.name;
-    return path.relative(process.cwd(), config.configPath);
-  }
+function cliBuild(roots: string[], jobs: number) {
   const projectBuilder = new Workspace({
-    parallelization,
+    jobs,
     watchMode: false,
   });
 
   projectBuilder.setRoots(roots.map(root => path.resolve(process.cwd(), root) as AbsolutePath));
   
-  projectBuilder.on('project_build_stderr', (config, text) => {
-    for (const line of text.split('\n'))
-      console.error(`[${configName(config)}] ${line}`)
+  projectBuilder.on('project_stderr', (project, text) => {
+    for (const line of text.trim().split('\n'))
+      console.error(`[${project.name}] ${line}`)
   });
-  
-  projectBuilder.on('project_build_stdout', (config, text) => {
-    for (const line of text.split('\n'))
-      console.log(`[${configName(config)}] ${line}`)
+
+  projectBuilder.on('project_stdout', (project, text) => {
+    for (const line of text.trim().split('\n'))
+      console.log(`[${project.name}] ${line}`)
   });
 }
