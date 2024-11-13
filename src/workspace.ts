@@ -120,7 +120,6 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
         toAbsolutePath(configDir, 'tsconfig.json'),
         toAbsolutePath(configDir, 'package.json'),
         toAbsolutePath(configDir, 'package-lock.json'),
-        toAbsolutePath(configDir, 'node_modules'),
       ]);
       const fileWatcher = chokidar.watch(toWatch, {
         ignored: toIgnore,
@@ -207,25 +206,32 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       options.onComplete(false);
       return;
     }
-    const configPath = options.nodeId;
-    const subprocess = spawn(process.execPath, [configPath], {
-      cwd: path.dirname(configPath),
-      stdio: 'pipe',
-      env: {
-        ...process.env,
-        KUBIK_WATCH_MODE: this._watchMode ? '1' : undefined,
-        KUBIK_RUNNER: '1',
-      },
-      windowsHide: true,
-      detached: true,
-    });
-    subprocess.stdout.on('data', data => options.onStdOut(data.toString('utf8')));
-    subprocess.stderr.on('data', data => options.onStdErr(data.toString('utf8')));
-    subprocess.on('close', code => options.onComplete(code === 0));
-    subprocess.on('error', error => options.onComplete(false));
-
-    options.signal.addEventListener('abort', () => {
-      killProcessTree(subprocess, 'SIGKILL');
-    });
+    try {
+      const configPath = options.nodeId;
+      const subprocess = spawn(process.execPath, [configPath], {
+        cwd: path.dirname(configPath),
+        stdio: 'pipe',
+        env: {
+          ...process.env,
+          KUBIK_WATCH_MODE: this._watchMode ? '1' : undefined,
+          KUBIK_RUNNER: '1',
+        },
+        windowsHide: true,
+        detached: true,
+      });
+      subprocess.stdout.on('data', data => options.onStdOut(data.toString('utf8')));
+      subprocess.stderr.on('data', data => options.onStdErr(data.toString('utf8')));
+      subprocess.on('close', code => options.onComplete(code === 0));
+      subprocess.on('error', error => options.onComplete(false));
+  
+      options.signal.addEventListener('abort', () => {
+        killProcessTree(subprocess, 'SIGKILL');
+      });
+    } catch (e) {
+      options.onStdErr(`Failed to launch ${options.nodeId}\n`);
+      if (e instanceof Error)
+        options.onStdErr(e.message);
+      options.onComplete(false);
+    }
   }
 }

@@ -62,7 +62,6 @@ By default, Kubik watches for changes in files commonly involved in build tasks,
 * `package.json`
 * `package-lock.json`
 * `tsconfig.json`
-* `node_modules/`
 
 ```js
 import { BuildScript } from 'kubik';
