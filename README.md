@@ -2,7 +2,56 @@
 
 > ⚠️ **Warning:** Kubik is currently in pre-1.0.0 release. Expect potential changes and experimental features that may not be fully stable yet.
 
-**Kubik** is a simple builder / task runner for node.js.
+**Kubik** is a simple builder / task runner for node.js, designed specifically to build typescript monorepos.
+
+* [Quick Start](./#quick-start)
+* [Getting Started](./#getting-started)
+* [Watch Mode](./#watch-mode)
+* [Parallelization](./#watch-mode)
+* [Shebang](./#shebang-usage)
+* [API](./#api)
+* [Debugging](./#debugging)
+
+## Quick Start
+
+A template script to build typescript with esbuild and lint its types with `tsc`: 
+
+```ts
+#!/usr/bin/env npx kubik
+
+import path from 'path';
+import esbuild from 'esbuild';
+import fs from 'fs';
+import { BuildScript } from 'kubik';
+
+const { __dirname, $ } = BuildScript.initialize(import.meta, {
+  name: 'build & lint',
+  watch: [ './src', './package.json' ],
+});
+
+const outDir = path.join(__dirname, 'lib');
+const srcDir = path.join(__dirname, 'src');
+const typesDir = path.join(__dirname, 'types');
+await fs.promises.rm(outDir, { recursive: true }).catch(e => void e);
+await fs.promises.rm(typesDir, { recursive: true }).catch(e => void e);
+
+const { errors } = await esbuild.build({
+  color: true,
+  entryPoints: [
+    path.join(srcDir, '**/*.ts'),
+  ],
+  outdir: outDir,
+  format: 'esm',
+  platform: 'node',
+  target: ['node22'],
+  sourcemap: false,
+  bundle: false,
+  minify: false,
+});
+
+if (!errors.length)
+  await $`tsc --pretty -p .`;
+```
 
 ## Getting Started
 
@@ -31,7 +80,7 @@ at the **very beginning** of your script:
 import { BuildScript } from 'kubik';
 
 BuildScript.initialize(import.meta, {
-  deps: ['./build-third-party.mjs'],
+  deps: ['./build-third-party.mjs'], // these are relative to script folder
 });
 
 console.log('Building main library...');
@@ -68,8 +117,8 @@ import { BuildScript } from 'kubik';
 
 BuildScript.initialize(import.meta, {
   deps: ['./build-third-party.mjs'],
-  watch: ['./src'],
-  ignore: ['./src/generated'],
+  watch: ['./src'],  // these are relative to script folder
+  ignore: ['./src/generated'],  // these are relative to script folder too
 });
 ```
 
@@ -77,7 +126,7 @@ BuildScript.initialize(import.meta, {
 
 Kubik supports `-j, --jobs <number>` flag to customize number of parallel jobs. By default, Kubik allows an unlimited number of parallel jobs.
 
-## Shebang usage
+## Shebang
 
 You can use kubik shebang in scripts, like this:
 
@@ -114,3 +163,13 @@ const { $, __dirname, __filename } = BuildScript.initialize(import.meta, {
 // $ uses __dirname as CWD by default
 await $`tsc --pretty -p .`;
 ```
+
+## Debugging
+
+You can run build scripts as regular node.js scripts; in this case, these are executed
+directly by node.js, with no Kubik in the way.
+
+```bash
+node ./build-main.mjs
+```
+
