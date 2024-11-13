@@ -41,14 +41,20 @@ function cliBuild(roots: AbsolutePath[], jobs: number) {
       console.log(chalk.green(`[kubik] Succeeded ${chalk.bold(project.name)} in ${chalk.bold(timeInSeconds(project.durationMs))}`));
   });
 
-  const logLine = jobs === 1 ? (project: Project, line: string) => console.log(line) : (project: Project, line: string) => console.log(`[${project.name}] ${line}`);
-  workspace.on('project_stderr', (project, text) => {
-    for (const line of text.trim().split('\n'))
-      logLine(project, line);
-  });
+  // For a sequential build, pipe stdout.
+  if (jobs === 1) {
+    workspace.on('project_stdout', (project, text) => process.stdout.write(text));
+    workspace.on('project_stderr', (project, text) => process.stderr.write(text));
+  } else {
+    const logLine = (project: Project, line: string) => console.log(`[${project.name}] ${line}`);
+    workspace.on('project_stderr', (project, text) => {
+      for (const line of text.trim().split('\n'))
+        logLine(project, line);
+    });
 
-  workspace.on('project_stdout', (project, text) => {
-    for (const line of text.trim().split('\n'))
-      logLine(project, line);
-  });
+    workspace.on('project_stdout', (project, text) => {
+      for (const line of text.trim().split('\n'))
+        logLine(project, line);
+    });
+  }
 }
