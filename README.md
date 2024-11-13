@@ -170,14 +170,20 @@ The whole API boils down to the following:
 import { BuildScript } from 'kubik';
 import fs from 'fs';
 
-const { $, __dirname, __filename } = BuildScript.initialize(import.meta, {
+const {
+  $, // execa shell runner, that uses __dirname as CWD
+  __dirname, // **this** script directory absolute path
+  __filename, // **this** script file absolute path
+  isWatchMode, // wether the script is run under kubik's watch mode
+} = BuildScript.initialize(import.meta, {
   name: 'my library',
   watch: ['./src'], // all the paths are resolved relative to this script
   ignore: ['./src/generated'], // relative to this script
   deps: ['../third-party/build.mjs'], // relative to this script
 });
 
-// $ uses __dirname as CWD by default
+// Use $ to run commands, e.g. typescript.
+// Note that $ uses __dirname as CWD.
 await $`tsc --pretty -p .`;
 ```
 
