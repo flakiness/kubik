@@ -3,6 +3,7 @@
 > ⚠️ **Warning:** Kubik is currently in pre-1.0.0 release. Expect potential changes and experimental features that may not be fully stable yet.
 
 **Kubik** is a simple builder / task runner for node.js, designed specifically to build typescript monorepos.
+Kubik uses `.mjs` scripts to define build tasks.
 
 * [Quick Start](#quick-start)
 * [Getting Started](#getting-started)
@@ -111,11 +112,24 @@ npx kubik ./build-main.mjs
 
 ## Watch Mode
 
+Kubik supports watch mode where it listens for changes on the file system and reruns tasks and
+their dependencies. 
+
+To run watch mode, use `-w` or `--watch` flag:
+
+```sh
+npx kubik -w ./build.mjs
+```
+
+In watch mode, Kubik launches a terminal app that shows progress, duration and logs from all the tasks:
+
 <img width="600" alt="Screenshot 2024-11-13 at 11 24 57 AM" src="https://github.com/user-attachments/assets/3cf03c48-0081-42f1-9f29-a79c905f9afb">
 
+There are a few shortcuts available to navigate inside the watch mode app:
 
-Kubik supports watch mode. You can supply `watch` and `ignore` options to the `BuildScript.initialize` to
-customize the watch mode behavior, and launch it later with `-w, --watch` flag.
+* To cycle focus through panels, use `Tab` and `Shift-Tab`
+* To scroll logs of the focused pane, use arrows, `j`, `k`, `Ctrl-U`, `Ctrl-D`, `gg` and `Shift-G`.
+* You can also use mouse to scroll logs
 
 By default, Kubik watches for changes in files commonly involved in build tasks, such as:
 
@@ -135,9 +149,10 @@ BuildScript.initialize(import.meta, {
 });
 ```
 
-Once launched, the watch mode shows progress, duration and logs from all the tasks.
-* To focus panel with task output, use `Tab` and `Shift-Tab` shortcuts
-* To scroll logs, use arrows, `j`, `k`, `Ctrl-U`, `Ctrl-D`, `gg` and `Shift-G`.
+> NOTE: Be careful with watch mode: if the build procedure changes some of the watched files,
+> then Kubik will re-run the build one time, causing "infinite" builds. You'll observe this
+> with tasks never completing.
+> Use `ignore` option to mitigate this behavior.
 
 ## Parallelization
 
