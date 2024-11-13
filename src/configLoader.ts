@@ -1,5 +1,5 @@
 import path from "path";
-import { RawConfigOptions } from "./import.js";
+import { BuildScriptOptions } from "./import.js";
 import { spawnAsync } from "./process_utils.js";
 import { Brand } from "./utils.js";
 
@@ -52,7 +52,7 @@ async function readSingleConfig(configPath: AbsolutePath): Promise<ReadConfigRes
   if (code !== 0)
     return { configPath, error: 'failed to load configuration\n' + output};
   try {
-    let { name, watch = [], ignore = [], deps = [] } = JSON.parse(output) as RawConfigOptions;
+    let { name, watch = [], ignore = [], deps = [] } = JSON.parse(output) as BuildScriptOptions;
     if (!Array.isArray(watch))
       watch = [watch];
     if (!Array.isArray(ignore))

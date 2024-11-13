@@ -1,22 +1,10 @@
 #!/usr/bin/env node
 
+import chalk from 'chalk';
 import blessed from 'neo-blessed';
 import { AbsolutePath } from './configLoader.js';
-
-import chalk from 'chalk';
 import { stripAnsi } from './utils.js';
 import { Project, Workspace } from './workspace.js';
-
-export const FILLER = '░';
-export const FILLER_2 = '█';
-
-export function renderSectionTitle({ left = '', middle = '', right = '', filler = FILLER, width = process.stdout.columns, fillStyle = (a: string) => a, }) {
-  const headerLength = stripAnsi(middle).length;
-
-  const fillLeftLength = ((process.stdout.columns - headerLength) >> 1) - stripAnsi(left).length;
-  const fillRightLength = ((process.stdout.columns - headerLength + 1) >> 1) - stripAnsi(right).length;
-  return left + fillStyle(filler.repeat(fillLeftLength)) + middle + fillStyle(filler.repeat(fillRightLength)) + right;
-}
 
 function timeInSeconds(ms: number) {
   return parseFloat((ms / 1000).toFixed(1)).toFixed(1) + 's';
@@ -54,13 +42,11 @@ function renderProjectTitle(project: Project, isFocused: boolean = false) {
     right = fillStyle(isFocused ? ' j, k, Space ' : '');
   }
 
-  return renderSectionTitle({
-    left,
-    right,
-    middle: ' ' + projectName + ' ',
-    fillStyle,
-    filler,
-  });
+  const middle = ' ' + projectName + ' ';
+  const headerLength = stripAnsi(middle).length;
+  const fillLeftLength = ((process.stdout.columns - headerLength) >> 1) - stripAnsi(left).length;
+  const fillRightLength = ((process.stdout.columns - headerLength + 1) >> 1) - stripAnsi(right).length;
+  return left + fillStyle(filler.repeat(fillLeftLength)) + middle + fillStyle(filler.repeat(fillRightLength)) + right;
 }
 
 class ProjectView {
@@ -83,7 +69,7 @@ class ProjectView {
     this._contentBox = blessed.box({
       top: 0,
       left: 0,
-      width: process.stdout.columns,
+      width: '100%',
       height: '50%',
       content: '',
       scrollbar: {
@@ -97,7 +83,7 @@ class ProjectView {
       },
       keys: true, // Enable keyboard navigation
       vi: true, // Use vi-style keys for navigation
-      mouse: false, // Enable mouse support for scrolling
+      mouse: true, // Enable mouse support for scrolling
       _border: {
         type: 'line',
         left: true,
