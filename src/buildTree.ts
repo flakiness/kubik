@@ -19,6 +19,14 @@ type Node = {
   children: Node[],
   generation: number,
   subtreeSha: string,
+  /**
+   * The build is set if:
+   * 1. It's been scheduled with buildCallback
+   * 2. The version of the node hasn't changed since the build was started.
+   * 
+   * If the version of the node changes while the build is in-progress,
+   * it'll be aborted and the value here is cleared.
+   */
   build?: Build,
 }
 
@@ -32,7 +40,7 @@ export type BuildOptions = {
 
 export type BuildTreeOptions = {
   buildCallback: (options: BuildOptions) => void,
-  parallelization: number,
+  jobs: number,
 }
 
 export class CycleError extends Error {
@@ -124,7 +132,7 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
 
   /**
    * Set build tree. This will synchronously abort builds for those nodes
-   * that were either removed or changed.
+   * that were either removed or changed their dependencies.
    * @param tree 
    */
   setBuildTree(tree: Multimap<string, string>) {
@@ -208,6 +216,10 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
     return result;
   }
 
+  /**
+   * This will synchronously abort builds for the `nodeId` and all its parents.
+   * @param nodeId
+   */
   markChanged(nodeId: string) {
     const node = this._nodes.get(nodeId);
     assert(node, `cannot mark changed a node ${nodeId} that does not exist`);
@@ -240,35 +252,14 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
   private _buildBuildable() {
     this._buildBuildableTimeout = undefined;
 
-    const visited = new Set<Node>();
-    const allNodesToBeBuilt: Node[] = [];
-    const startStopBuilds = (node: Node) => {
-      if (visited.has(node))
-        return;
-      visited.add(node);
-      if (nodeVersion(node) === node.build?.buildVersion)
-        return;
+    const nodesBeingBuilt = [...this._nodes.values()].filter(node => node.build && node.build.success === undefined);
+    const capacity = this._options.jobs - nodesBeingBuilt.length;
+    if (capacity <= 0)
+      return;
 
-      // By default, cancel build if any and RESET BUILD. The "node.build = undefined"
-      // means that the build for this node is pending.
-      this._abortBuild(node);
-
-      for (const child of node.children)
-        startStopBuilds(child);
-      
-      // If some children don't have successful up-to-date build, then do nothing.
-      if (!node.children.every(isSuccessfulCurrentBuild))
-        return;
-
-      allNodesToBeBuilt.push(node);
-    }
-    for (const root of this._roots)
-      startStopBuilds(root);
-
-    const runningBuildsCount = [...this._nodes.values()].filter(node => this.buildStatus(node.nodeId).status === 'running').length;
-    const nodesToBuildCount = Math.min(allNodesToBeBuilt.length, this._options.parallelization - runningBuildsCount);
-    for (const node of allNodesToBeBuilt.slice(0, Math.max(0, nodesToBuildCount)))
-      this._startBuild(node);  
+    const buildableNodes = [...this._nodes.values()].filter(node => !node.build && node.children.every(isSuccessfulCurrentBuild));
+    for (const node of buildableNodes.slice(0, capacity))
+      this._startBuild(node);
 
     const treeVersion = this._treeVersion();
     if (this.treeBuildStatus() === 'complete' && this._lastCompleteTreeVersion !== treeVersion) {

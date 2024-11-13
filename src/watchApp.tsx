@@ -4,7 +4,7 @@ import path from 'path';
 import { useEffect, useState } from 'react';
 import { BuildStatus } from './buildTree.js';
 import { AbsolutePath, ReadConfigResult } from './configLoader.js';
-import { ProjectBuilder } from './projectBuilder.js';
+import { Workspace } from './workspace.js';
 
 const ScrollableText = ({ lines }: { lines: string[]}) => {
   const [scrollPosition, setScrollPosition] = useState(0);
@@ -56,7 +56,7 @@ function projectName(project: ReadConfigResult) {
 }
 
 
-const ProjectView = ({ projectBuilder, project }: { projectBuilder: ProjectBuilder, project: ReadConfigResult }) => {
+const ProjectView = ({ projectBuilder, project }: { projectBuilder: Workspace, project: ReadConfigResult }) => {
   const status = projectBuilder.projectStatus(project);
 
   const [buildStatus, setBuildStatus] = useState(status.status);
@@ -104,7 +104,7 @@ const ProjectView = ({ projectBuilder, project }: { projectBuilder: ProjectBuild
   );
 }
 
-const WatchApp = ({ projectBuilder }: { projectBuilder: ProjectBuilder }) => {
+const WatchApp = ({ projectBuilder }: { projectBuilder: Workspace }) => {
   const [projects, setProjects] = useState(projectBuilder.projects());
 
   useEffect(() => {
@@ -126,7 +126,7 @@ const WatchApp = ({ projectBuilder }: { projectBuilder: ProjectBuilder }) => {
 };
 
 export function startWatchApp(roots: string[], parallelization: number) {
-  const projectBuilder = new ProjectBuilder({
+  const projectBuilder = new Workspace({
     parallelization,
     watchMode: true,
   });

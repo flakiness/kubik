@@ -24,12 +24,19 @@ function renderCycleError(error: CycleError) {
   return ['Dependency cycle detected', ...cycleMessage].join('\n');
 }
 
-type ProjectBuilderOptions = {
+type WorkspaceOptions = {
   watchMode: boolean,
   parallelization: number,
 };
 
-type ProjectBuilderEvents = {
+export type Project = {
+  name: string;
+  status: 'pending'|'running'|'ok'|'fail',
+  durationMs: number,
+  output: string,
+}
+
+type WorkspaceEvents = {
   'changed': [ReadConfigResult, BuildStatus],
   'completed': [],
   'projects_changed': [],
@@ -40,7 +47,7 @@ type ProjectBuilderEvents = {
   'project_build_stderr': [ReadConfigResult, string],
 }
 
-export class ProjectBuilder extends EventEmitter<ProjectBuilderEvents> {
+export class Workspace extends EventEmitter<WorkspaceEvents> {
   private _buildTree: BuildTree;
   private _configs = new Map<AbsolutePath, ReadConfigResult>();
   private _fileWatchers = new Map<AbsolutePath, FSWatcher>();
@@ -50,12 +57,12 @@ export class ProjectBuilder extends EventEmitter<ProjectBuilderEvents> {
 
   private _watchMode: boolean;
 
-  constructor(options: ProjectBuilderOptions) {
+  constructor(options: WorkspaceOptions) {
     super();
     this._watchMode = options.watchMode;
     this._buildTree = new BuildTree({
       buildCallback: this._build.bind(this),
-      parallelization: options.parallelization,
+      jobs: options.parallelization,
     });
 
     this._buildTree.on('changed', (nodeId) => {
@@ -88,13 +95,19 @@ export class ProjectBuilder extends EventEmitter<ProjectBuilderEvents> {
     });
   }
 
-  projects(): ReadConfigResult[] {
+  projects(): Project[] {
     const nodeIds = this._buildTree.buildOrder();
-    return nodeIds.map(nodeId => this._configs.get(nodeId as AbsolutePath)!);
-  }
-
-  projectStatus(project: ReadConfigResult): BuildStatus {
-    return this._buildTree.buildStatus(project.configPath);
+    return nodeIds.map(nodeId => {
+      const config = this._configs.get(nodeId as AbsolutePath)!;
+      const status = this._buildTree.buildStatus(nodeId);
+      const name = config.config?.name ? config.config.name : path.relative(process.cwd(), config.configPath);
+      return {
+        name,
+        durationMs: status.durationMs,
+        output: status.output,
+        status: status.status,
+      } as Project;
+    });
   }
 
   setRoots(roots: AbsolutePath[]) {

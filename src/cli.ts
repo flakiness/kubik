@@ -3,8 +3,8 @@
 import { program } from "commander";
 import path from "path";
 import { AbsolutePath, ReadConfigResult } from "./configLoader.js";
-import { ProjectBuilder } from "./projectBuilder.js";
 import { startWatchApp } from "./watchApp.js";
+import { Workspace } from "./workspace.js";
 
 program
   .description('Start build')
@@ -26,7 +26,7 @@ function cliBuild(roots: string[], parallelization: number) {
       return config.config.name;
     return path.relative(process.cwd(), config.configPath);
   }
-  const projectBuilder = new ProjectBuilder({
+  const projectBuilder = new Workspace({
     parallelization,
     watchMode: false,
   });

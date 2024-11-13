@@ -10,7 +10,7 @@ export function toAbsolutePath(base: AbsolutePath, relative: string): AbsolutePa
   return path.resolve(base, relative) as AbsolutePath;
 }
 
-type Config = {
+export type Config = {
   name?: string,
   watch: AbsolutePath[],
   ignore: AbsolutePath[],
