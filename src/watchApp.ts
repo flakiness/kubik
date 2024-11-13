@@ -3,12 +3,8 @@
 import chalk from 'chalk';
 import blessed from 'neo-blessed';
 import { AbsolutePath } from './configLoader.js';
-import { stripAnsi } from './utils.js';
+import { stripAnsi, timeInSeconds } from './utils.js';
 import { Project, Workspace } from './workspace.js';
-
-function timeInSeconds(ms: number) {
-  return parseFloat((ms / 1000).toFixed(1)).toFixed(1) + 's';
-}
 
 function renderProjectTitle(project: Project, isFocused: boolean = false) {
   const buildingTime = chalk.yellow(timeInSeconds(project.durationMs));

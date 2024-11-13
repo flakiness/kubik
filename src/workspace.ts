@@ -38,6 +38,8 @@ export type Project = {
 
 type WorkspaceEvents = {
   'changed': [],
+  'project_started': [Project],
+  'project_finished': [Project],
   'project_stdout': [Project, string],
   'project_stderr': [Project, string],
 }
@@ -60,9 +62,15 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       jobs: options.jobs,
     });
 
-    this._buildTree.on('node_build_started', () => this.emit('changed'));
+    this._buildTree.on('node_build_started', (nodeId) => {
+      this.emit('project_started', this._nodeIdToProject(nodeId))
+      this.emit('changed');
+    });
+    this._buildTree.on('node_build_finished', (nodeId) => {
+      this.emit('project_finished', this._nodeIdToProject(nodeId))
+      this.emit('changed');
+    });
     this._buildTree.on('node_build_aborted', () => this.emit('changed'));
-    this._buildTree.on('node_build_finished', () => this.emit('changed'));
 
     this._buildTree.on('node_build_stderr', (nodeId, line) => {
       this.emit('project_stderr', this._nodeIdToProject(nodeId), line);

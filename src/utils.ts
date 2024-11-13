@@ -20,3 +20,8 @@ const ansiRegex = new RegExp('[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(
 export function stripAnsi(str: string): string {
   return str.replace(ansiRegex, '');
 }
+
+export function timeInSeconds(ms: number) {
+  return parseFloat((ms / 1000).toFixed(1)).toFixed(1) + 's';
+}
+
