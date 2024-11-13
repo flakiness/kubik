@@ -411,7 +411,7 @@ test('check build order', async () => {
     'root': ['dep-1', 'dep-2'],
     'dep-1': ['leaf-1', 'leaf-2', 'leaf-3'],
   })));
-  expect(tree.buildOrder()).toEqual([
+  expect(tree.topsort()).toEqual([
     'leaf-1',
     'leaf-2',
     'leaf-3',

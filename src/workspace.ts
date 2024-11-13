@@ -87,7 +87,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
   }
 
   projects(): Project[] {
-    const nodeIds = this._buildTree.buildOrder();
+    const nodeIds = this._buildTree.topsort();
     return nodeIds.map(nodeId => this._nodeIdToProject(nodeId));
   }
 
@@ -120,6 +120,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
         toAbsolutePath(configDir, 'tsconfig.json'),
         toAbsolutePath(configDir, 'package.json'),
         toAbsolutePath(configDir, 'package-lock.json'),
+        toAbsolutePath(configDir, 'node_modules'),
       ]);
       const fileWatcher = chokidar.watch(toWatch, {
         ignored: toIgnore,

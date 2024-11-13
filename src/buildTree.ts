@@ -118,6 +118,7 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
   /**
    * Set build tree. This will synchronously abort builds for those nodes
    * that were either removed or changed their dependencies.
+   * NOTE: to actually kick off build, call `buildTree.build()` after setting the tree.
    * @param tree 
    */
   setBuildTree(tree: Multimap<string, string>) {
@@ -162,10 +163,11 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
     // Figure out roots
     this._roots = [...this._nodes.values()].filter(node => !node.parents.length);
 
-    this._computeSubtreeSha();
-  }
+    // We have to sort roots, since treeVersion relies on their order.
+    this._roots.sort((a, b) => a.nodeId < b.nodeId ? -1 : 1);
 
-  private _computeSubtreeSha() {
+    // Comppute subtree sha's. if some node's sha changed, than we have
+    // to reset build, if any.
     const dfs = (node: Node) => {
       node.children.sort((a, b) => a.nodeId < b.nodeId ? -1 : 1);
       for (const child of node.children)
@@ -176,12 +178,12 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
         this._resetBuild(node);
       }
     }
-    this._roots.sort((a, b) => a.nodeId < b.nodeId ? -1 : 1);
+    
     for (const root of this._roots)
       dfs(root);
   }
 
-  buildOrder(): string[] {
+  topsort(): string[] {
     const result: string[] = [];
     const visited = new Set<Node>();
     const dfs = (node: Node) => {
