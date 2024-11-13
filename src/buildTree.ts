@@ -124,12 +124,15 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
   setBuildTree(tree: Multimap<string, string>) {
     this._checkNoCycles(tree);
 
+    const addedNodes: string[] = [];
+    const removedNodes: string[] = [];
     // Remove nodes that were dropped, cancelling their build in the meantime.
     const nodeIds = new Set([...tree.values(), ...tree.keys()]);
     for (const [nodeId, node] of this._nodes) {
       if (!nodeIds.has(nodeId)) {
         this._resetBuild(node);
         this._nodes.delete(nodeId);
+        removedNodes.push(nodeId);
       }
     }
     this._roots = [];
@@ -143,7 +146,8 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
           parents: [],
           generation: 0,
           subtreeSha: '',
-        });  
+        });
+        addedNodes.push(nodeId);
       }
       const node = this._nodes.get(nodeId)!;
       node.children = [];
@@ -181,6 +185,8 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
     
     for (const root of this._roots)
       dfs(root);
+
+    return { addedNodes, removedNodes };
   }
 
   topsort(): string[] {

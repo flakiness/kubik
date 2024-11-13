@@ -10,7 +10,7 @@ import { killProcessTree } from "./process_utils.js";
 type UpdateData = {
   timeout: NodeJS.Timeout,
   needsRereadConfigFiles: boolean,
-  changedConfigs: Set<AbsolutePath>,
+  changedProjects: Set<InternalProject>,
 }
 
 function renderCycleError(cycle: string[]) {
@@ -35,198 +35,89 @@ export type Project = {
   output: string,
 }
 
-type WorkspaceEvents = {
-  'changed': [],
-  'project_started': [Project],
-  'project_finished': [Project],
-  'project_stdout': [Project, string],
-  'project_stderr': [Project, string],
-}
-
-export class Workspace extends EventEmitter<WorkspaceEvents> {
+class InternalProject {
+  private _configPath: AbsolutePath;
   private _buildTree: BuildTree;
-  private _configs = new Map<AbsolutePath, ReadConfigResult>();
-  private _fileWatchers = new Map<AbsolutePath, FSWatcher>();
+  private _config?: ReadConfigResult;
+  private _watchMode: boolean = false;
+  private _fsWatch?: FSWatcher;
 
-  private _updateData?: UpdateData;
-  private _roots: AbsolutePath[] = [];
+  constructor(buildTree: BuildTree, configPath: AbsolutePath) {
+    this._buildTree = buildTree;
+    this._configPath = configPath;
+  }
 
-  private _watchMode: boolean;
+  async startFileWatch(onFilesChanged?: (project: InternalProject, filePath: AbsolutePath) => void) {
+    this._watchMode = true;
+    await this._reinitializeFileWatcher(onFilesChanged);
+  }
 
-  constructor(options: WorkspaceOptions) {
-    super();
-    this._watchMode = options.watchMode;
-    this._buildTree = new BuildTree({
-      buildCallback: this._build.bind(this),
-      jobs: options.jobs,
+  async stopFileWatch() {
+    this._watchMode = false;
+    await this._reinitializeFileWatcher();
+  }
+
+  private async _reinitializeFileWatcher(onFilesChanged?: (project: InternalProject, filePath: AbsolutePath) => void) {
+    this._fsWatch?.removeAllListeners();
+    await this._fsWatch?.close();
+    this._fsWatch = undefined;
+
+    if (!this._watchMode)
+      return;
+
+    const toWatch: AbsolutePath[] = [];
+    const toIgnore: AbsolutePath[] = [];
+    toWatch.push(this._configPath);
+    if (this._config?.config) {
+      toWatch.push(...this._config.config.watch);
+      toIgnore.push(...this._config.config.ignore);
+    }
+
+    // Also, start watching for tsconfig.json, package.json, package-lock.json by default.
+    const configDir = path.dirname(this._configPath) as AbsolutePath;
+    toWatch.push(...[
+      toAbsolutePath(configDir, 'tsconfig.json'),
+      toAbsolutePath(configDir, 'package.json'),
+      toAbsolutePath(configDir, 'package-lock.json'),
+    ]);
+    this._fsWatch = chokidar.watch(toWatch, {
+      ignored: toIgnore,
+      persistent: true,
+      ignoreInitial: true,
     });
-
-    this._buildTree.on('node_build_started', (nodeId) => {
-      this.emit('project_started', this._nodeIdToProject(nodeId))
-      this.emit('changed');
-    });
-    this._buildTree.on('node_build_finished', (nodeId) => {
-      this.emit('project_finished', this._nodeIdToProject(nodeId))
-      this.emit('changed');
-    });
-    this._buildTree.on('node_build_aborted', () => this.emit('changed'));
-
-    this._buildTree.on('node_build_stderr', (nodeId, line) => {
-      this.emit('project_stderr', this._nodeIdToProject(nodeId), line);
-      this.emit('changed');
-    });
-    this._buildTree.on('node_build_stdout', (nodeId, line) => {
-      this.emit('project_stdout', this._nodeIdToProject(nodeId), line);
-      this.emit('changed');
+    this._fsWatch.on('all', (eventType: string, filePath?: string) => {
+      if (filePath)
+        onFilesChanged?.call(null, this, filePath as AbsolutePath);
     });
   }
 
-  private _projectName(nodeId: string) {
-    const config = this._configs.get(nodeId as AbsolutePath)!;
-    return config.config?.name ? config.config.name : path.relative(process.cwd(), config.configPath);
+  configPath() { return this._configPath; }
+
+  name() {
+    return this._config?.config?.name ? this._config.config.name : path.relative(process.cwd(), this._configPath);
   }
 
-  private _nodeIdToProject(nodeId: string): Project {
-    const status = this._buildTree.buildInfo(nodeId);
+  setConfigResult(config: ReadConfigResult) {
+    this._config = config;
+  }
+
+  toProject() {
+    const status = this._buildTree.buildInfo(this._configPath);
     return {
-      name: this._projectName(nodeId),
+      name: this.name(),
       durationMs: status.durationMs,
       output: status.output,
       status: status.status,
     } as Project;
   }
 
-  projects(): Project[] {
-    const nodeIds = this._buildTree.topsort();
-    return nodeIds.map(nodeId => this._nodeIdToProject(nodeId));
-  }
-
-  setRoots(roots: AbsolutePath[]) {
-    this._roots = roots;
-    this._scheduleUpdate({ needsRereadConfigFiles: true });
-  }
-
-  private async _reinitializeFileWatcher() {
-    for (const [nodeId, fileWatcher] of this._fileWatchers)
-      fileWatcher.removeAllListeners();
-    await Promise.all([...this._fileWatchers.values()].map(fsWatcher => fsWatcher.close()));
-    this._fileWatchers.clear();
-
-    if (!this._watchMode)
-      return false;
-
-    // list of all paths to watch and ignore
-    for (const [configPath, result] of this._configs) {
-      const toWatch: AbsolutePath[] = [];
-      const toIgnore: AbsolutePath[] = [];
-      toWatch.push(configPath);
-      if (result.config) {
-        toWatch.push(...result.config.watch);
-        toIgnore.push(...result.config.ignore);
-      }
-      // Also, start watching for tsconfig.json, package.json, package-lock.json by default.
-      const configDir = path.dirname(configPath) as AbsolutePath;
-      toWatch.push(...[
-        toAbsolutePath(configDir, 'tsconfig.json'),
-        toAbsolutePath(configDir, 'package.json'),
-        toAbsolutePath(configDir, 'package-lock.json'),
-      ]);
-      const fileWatcher = chokidar.watch(toWatch, {
-        ignored: toIgnore,
-        persistent: true,
-        ignoreInitial: true,
-      });
-      fileWatcher.on('all', (eventType: string, filePath?: string) => {
-        this._scheduleUpdate({ changedConfig: configPath, needsRereadConfigFiles: configPath === filePath });
-      });
-      this._fileWatchers.set(configPath, fileWatcher);
-    }
-  }
-
-  private _scheduleUpdate(options: { changedConfig?: AbsolutePath, needsRereadConfigFiles?: boolean }) {
-    if (!options.changedConfig && !options.needsRereadConfigFiles)
-      return;
-    if (!this._updateData) {
-      this._updateData = {
-        changedConfigs: new Set(),
-        needsRereadConfigFiles: false,
-        timeout: setTimeout(this._doUpdate.bind(this), 150),
-      }
-    }
-    if (options.changedConfig)
-      this._updateData.changedConfigs.add(options.changedConfig);
-    if (options.needsRereadConfigFiles)
-      this._updateData.needsRereadConfigFiles = true;
-  }
-
-  async stop() {
-    clearTimeout(this._updateData?.timeout);
-    this._watchMode = false;
-    this._buildTree.resetAllBuilds();
-    await this._reinitializeFileWatcher();
-  }
-
-  private async _doUpdate() {
-    if (!this._updateData)
-      return;
-    // Pull data scheduled for update at this point of time and reset the update state.
-    // If update state will change during this method execution, we will re-schedule the build.
-    const { changedConfigs, needsRereadConfigFiles } = this._updateData;
-    this._updateData = {
-      changedConfigs: new Set(),
-      needsRereadConfigFiles: false,
-      timeout: this._updateData.timeout,
-    };
-
-    // First, propogate changes to the build tree.
-    for (const changedConfig of changedConfigs)
-      this._buildTree.markChanged(changedConfig);
-
-    // Next, if some of the configuration files changed, than we have to re-read the configs
-    // and update the build tree.
-    if (needsRereadConfigFiles)
-      await this._readConfiguration();
-
-    // If while processing update, we got new incoming changes, than schedule processing
-    // them as well. Otherwise, kick off build with new incorporated changes.
-    if (this._updateData.changedConfigs.size || this._updateData.needsRereadConfigFiles) {
-      this._updateData.timeout = setTimeout(this._doUpdate.bind(this), 150);
-    } else {
-      this._updateData = undefined;
-      this._buildTree.build();
-    }
-  }
-
-  private async _readConfiguration() {
-    this._configs = await readConfigTree(this._roots);
-    const projectTree = new Multimap<AbsolutePath, AbsolutePath>();
-    for (const [key, value] of this._configs) {
-      const children = value.config?.deps ?? [];
-      projectTree.setAll(key, children);
-    }
-
-    try {
-      this._buildTree.setBuildTree(projectTree);
-    } catch (e) {
-      if (e instanceof CycleError) {
-        const error = new Error(renderCycleError(e.cycle.map(nodeId => this._projectName(nodeId))));
-        error.stack = '';
-        throw error;
-      }
-        
-      throw e;
-    }
-    this._reinitializeFileWatcher();
-    this.emit('changed');
-  }
-
-  private _build(options: BuildOptions) {
-    const readConfigResult = this._configs.get(options.nodeId as AbsolutePath);
-    if (readConfigResult?.error) {
-      options.onStdErr(readConfigResult.error);
+  requestBuild(options: BuildOptions) {
+    if (this._config?.error) {
+      options.onStdErr(this._config.error);
       options.onComplete(false);
       return;
     }
+
     try {
       const configPath = options.nodeId;
       const subprocess = spawn(process.execPath, [configPath], {
@@ -254,5 +145,159 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
         options.onStdErr(e.message);
       options.onComplete(false);
     }
+  }
+}
+
+type WorkspaceEvents = {
+  'changed': [],
+  'project_started': [Project],
+  'project_finished': [Project],
+  'project_stdout': [Project, string],
+  'project_stderr': [Project, string],
+}
+
+export class Workspace extends EventEmitter<WorkspaceEvents> {
+  private _buildTree: BuildTree;
+  private _projects = new Map<AbsolutePath, InternalProject>();
+
+  private _updateData?: UpdateData;
+  private _roots: AbsolutePath[] = [];
+
+  private _watchMode: boolean;
+
+  constructor(options: WorkspaceOptions) {
+    super();
+    this._watchMode = options.watchMode;
+    this._buildTree = new BuildTree({
+      buildCallback: (options) => {
+        const project = this._projects.get(options.nodeId as AbsolutePath);
+        project?.requestBuild(options);    
+      },
+      jobs: options.jobs,
+    });
+    
+    this._buildTree.on('node_build_started', (nodeId) => {
+      this.emit('project_started', this._projects.get(nodeId as AbsolutePath)!.toProject());
+      this.emit('changed');
+    });
+    this._buildTree.on('node_build_finished', (nodeId) => {
+      this.emit('project_finished', this._projects.get(nodeId as AbsolutePath)!.toProject())
+      this.emit('changed');
+    });
+    this._buildTree.on('node_build_aborted', () => this.emit('changed'));
+
+    this._buildTree.on('node_build_stderr', (nodeId, line) => {
+      this.emit('project_stderr', this._projects.get(nodeId as AbsolutePath)!.toProject(), line);
+      this.emit('changed');
+    });
+    this._buildTree.on('node_build_stdout', (nodeId, line) => {
+      this.emit('project_stdout', this._projects.get(nodeId as AbsolutePath)!.toProject(), line);
+      this.emit('changed');
+    });
+  }
+
+  projects(): Project[] {
+    const nodeIds = this._buildTree.topsort();
+    return nodeIds.map(nodeId => this._projects.get(nodeId as AbsolutePath)!.toProject());
+  }
+
+  setRoots(roots: AbsolutePath[]) {
+    this._roots = roots;
+    this._scheduleUpdate({ needsRereadConfigFiles: true });
+  }
+
+  private _scheduleUpdate(options: { changedProject?: InternalProject, needsRereadConfigFiles?: boolean }) {
+    if (!options.changedProject && !options.needsRereadConfigFiles)
+      return;
+    if (!this._updateData) {
+      this._updateData = {
+        changedProjects: new Set(),
+        needsRereadConfigFiles: false,
+        timeout: setTimeout(this._doUpdate.bind(this), 150),
+      }
+    }
+    if (options.changedProject)
+      this._updateData.changedProjects.add(options.changedProject);
+    if (options.needsRereadConfigFiles)
+      this._updateData.needsRereadConfigFiles = true;
+  }
+
+  async stop() {
+    clearTimeout(this._updateData?.timeout);
+    this._watchMode = false;
+    this._buildTree.resetAllBuilds();
+    for (const project of this._projects.values())
+      project.stopFileWatch();
+  }
+
+  private async _doUpdate() {
+    if (!this._updateData)
+      return;
+    // Pull data scheduled for update at this point of time and reset the update state.
+    // If update state will change during this method execution, we will re-schedule the build.
+    const { changedProjects, needsRereadConfigFiles } = this._updateData;
+    this._updateData = {
+      changedProjects: new Set(),
+      needsRereadConfigFiles: false,
+      timeout: this._updateData.timeout,
+    };
+
+    // First, propogate changes to the build tree.
+    for (const changedProject of changedProjects)
+      this._buildTree.markChanged(changedProject.configPath());
+
+    // Next, if some of the configuration files changed, than we have to re-read the configs
+    // and update the build tree.
+    if (needsRereadConfigFiles)
+      await this._readConfiguration();
+
+    // If while processing update, we got new incoming changes, than schedule processing
+    // them as well. Otherwise, kick off build with new incorporated changes.
+    if (this._updateData.changedProjects.size || this._updateData.needsRereadConfigFiles) {
+      this._updateData.timeout = setTimeout(this._doUpdate.bind(this), 150);
+    } else {
+      this._updateData = undefined;
+      this._buildTree.build();
+    }
+  }
+
+  private async _readConfiguration() {
+    const configs = await readConfigTree(this._roots);
+    const projectTree = new Multimap<AbsolutePath, AbsolutePath>();
+    for (const [key, value] of configs) {
+      const children = value.config?.deps ?? [];
+      projectTree.setAll(key, children);
+    }
+
+    try {
+      const { addedNodes, removedNodes } = this._buildTree.setBuildTree(projectTree);
+      for (const nodeId of removedNodes) {
+        const project = this._projects.get(nodeId as AbsolutePath);
+        project?.stopFileWatch();
+        this._projects.delete(nodeId as AbsolutePath);
+      }
+      for (const nodeId of addedNodes) {
+        const project = new InternalProject(this._buildTree, nodeId as AbsolutePath);
+        this._projects.set(nodeId as AbsolutePath, project);
+      }
+      // For all existing projects, update configuration, and re-initialize watches.
+      for (const project of this._projects.values()) {
+        project.setConfigResult(configs.get(project.configPath())!);
+        if (this._watchMode) {
+          project.startFileWatch((project, filePath) => this._scheduleUpdate({
+            changedProject: project,
+            needsRereadConfigFiles: filePath === project.configPath(),
+          }));
+        }
+      }
+    } catch (e) {
+      if (e instanceof CycleError) {
+        const error = new Error(renderCycleError(e.cycle.map(nodeId => path.relative(process.cwd(), nodeId))));
+        error.stack = '';
+        throw error;
+      }
+      throw e;
+    }
+    this.emit('changed');
   }
 }
