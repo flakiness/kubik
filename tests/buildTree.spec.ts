@@ -6,7 +6,7 @@ class Logger {
   public log: string[] = [];
 
   constructor(tree: BuildTree) {
-    tree.on('node_build_will_start', this._log.bind(this, 'started'));
+    tree.on('node_build_started', this._log.bind(this, 'started'));
     tree.on('node_build_finished', this._log.bind(this, 'finished'));
     tree.on('node_build_aborted', this._log.bind(this, 'aborted'));
   }
@@ -55,11 +55,11 @@ async function onStarted(tree: BuildTree, nodeIds: string[]) {
     const listener = (nodeId: string) => {
       pending.delete(nodeId);
       if (!pending.size) {
-        tree.off('node_build_will_start', listener);
+        tree.off('node_build_started', listener);
         resolve();
       }
     }  
-    tree.on('node_build_will_start', listener);
+    tree.on('node_build_started', listener);
   });
 }
 
@@ -297,8 +297,8 @@ test('tests jobs = 2', async () => {
     'started: leaf-1',
     'started: leaf-2',
     'finished: leaf-1',
-    'started: leaf-3',
     'finished: leaf-2',
+    'started: leaf-3',
     'finished: leaf-3',
   ]);
 });
@@ -365,6 +365,7 @@ test('empty tree should not throw any errors', async () => {
     'node-2': [],
   })));
   tree.build();
+  await onStarted(tree, ['node-1', 'node-2']);
   expect(logger.pull()).toEqual([
     'started: node-1',
     'started: node-2',
@@ -427,6 +428,7 @@ test('should abort only once', async () => {
     'root': [],
   })));
   tree.build();
+  await onStarted(tree, ['root']);
   expect(logger.pull()).toEqual([
     'started: root',
   ]);

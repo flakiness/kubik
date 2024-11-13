@@ -57,8 +57,7 @@ export type BuildStatus = {
 
 type BuildTreeEvents = {
   'completed': [],
-  'node_build_will_start': [string],
-  'node_build_did_start': [string],
+  'node_build_started': [string],
   'node_build_finished': [string],
   'node_build_aborted': [string],
   'node_build_stdout': [string, string],
@@ -251,7 +250,6 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
       return;
 
     for (const node of buildableNodes.slice(0, capacity)) {
-      this.emit('node_build_will_start', node.nodeId);
       node.build = {
         abortController: new AbortController(),
         buildVersion: nodeVersion(node),
@@ -269,8 +267,7 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
       // Request building in a microtask to avoid reenterability.
       Promise.resolve().then(() => {
         this._options.buildCallback.call(null, buildOptions)
-      }).finally(() => {
-        this.emit('node_build_did_start', node.nodeId);
+        this.emit('node_build_started', node.nodeId);
       });
     }
   }
