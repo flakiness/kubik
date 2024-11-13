@@ -1,7 +1,7 @@
 {
   "name": "kubik",
   "type": "module",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "",
   "main": "index.js",
   "bin": {
@@ -33,7 +33,6 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
-    "@types/react": "^18.3.12",
     "chalk": "^5.3.0",
     "chokidar": "^4.0.1",
     "commander": "^12.1.0",
