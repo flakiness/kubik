@@ -14,7 +14,7 @@
 
 ## Quick Start
 
-A template script to build typescript with esbuild and lint its types with `tsc`: 
+A template script `build.mjs` to build typescript with esbuild and lint its types with `tsc`: 
 
 ```ts
 #!/usr/bin/env npx kubik
@@ -26,7 +26,7 @@ import { BuildScript } from 'kubik';
 
 const { __dirname, $ } = BuildScript.initialize(import.meta, {
   name: 'build & lint',
-  watch: [ './src', './package.json' ],
+  watch: [ './src' ],
 });
 
 const outDir = path.join(__dirname, 'lib');
@@ -52,6 +52,12 @@ const { errors } = await esbuild.build({
 if (!errors.length)
   await $`tsc --pretty -p .`;
 ```
+
+Commands:
+* Build: `./build.mjs` or `npx kubik ./build.mjs`
+* Watch mode: `./build.mjs -w` or `npx kubik -w ./build.mjs`
+* Debug (run without Kubik): `node build.mjs`
+* Run sequential build: `./build.mjs -j 1` or `npx kubik -j 1 ./build.mjs`
 
 ## Getting Started
 
