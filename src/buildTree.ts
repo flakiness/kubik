@@ -56,9 +56,9 @@ export type BuildStatus = {
 }
 
 type BuildTreeEvents = {
-  'changed': [string],
   'completed': [],
   'node_build_will_start': [string],
+  'node_build_did_start': [string],
   'node_build_finished': [string],
   'node_build_aborted': [string],
   'node_build_stdout': [string, string],
@@ -75,18 +75,11 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
   }
 
   /**
-   * The tree is "complete" if there's nothing to be built.
-   * However, every time tree is modified, the build has to be kicked off manually
-   * with the "startBuilding()" method.
+   * The tree is "complete" if there's nothing to be built, and nothing is being built.
    * @returns 
    */
   treeBuildStatus(): 'complete'|'incomplete' {
-    const nodes = [...this._nodes.values()];
-    // We say that the tree is "complete", if there's nothing to be built: all built results are in.
-    // We consider the tree to be complete, if:
-    // All nodes that 
-    const isComplete = nodes.every(node => node.build && node.build.success !== undefined);
-    return isComplete ? 'complete' : 'incomplete';
+    return this._buildableNodes().length === 0 && this._nodesBeingBuilt().length === 0 ? 'complete' : 'incomplete';
   }
 
   buildStatus(nodeId: string): BuildStatus {
@@ -194,10 +187,6 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
       dfs(root);
   }
 
-  private _treeVersion(): string {
-    return sha256(this._roots.map(nodeVersion));
-  }
-
   buildOrder(): string[] {
     const result: string[] = [];
     const visited = new Set<Node>();
@@ -234,6 +223,18 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
     dfs(node);
   }
 
+  private _buildableNodes(): Node[] {
+    return [...this._nodes.values()].filter(node => !node.build && node.children.every(isSuccessfulCurrentBuild));
+  }
+
+  private _nodesBeingBuilt(): Node[] {
+    return [...this._nodes.values()].filter(node => node.build && node.build.success === undefined);
+  }
+
+  private _computeTreeVersion() {
+    return sha256(this._roots.map(nodeVersion));
+  }
+
   /**
    * This method will traverse the tree and start building nodes that are buildable.
    * Note that once these nodes complete to build, other node will be started.
@@ -241,12 +242,22 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
    * @returns 
    */
   build() {
-    const nodesBeingBuilt = [...this._nodes.values()].filter(node => node.build && node.build.success === undefined);
+    const nodesBeingBuilt = this._nodesBeingBuilt();
+    const buildableNodes = this._buildableNodes();
+
+    if (nodesBeingBuilt.length === 0 && buildableNodes.length === 0) {
+      const treeVersion = this._computeTreeVersion();
+      if (treeVersion !== this._lastCompleteTreeVersion) {
+        this._lastCompleteTreeVersion = treeVersion;
+        this.emit('completed');
+      }
+      return;
+    }
+
     const capacity = this._options.jobs - nodesBeingBuilt.length;
     if (capacity <= 0)
       return;
 
-    const buildableNodes = [...this._nodes.values()].filter(node => !node.build && node.children.every(isSuccessfulCurrentBuild));
     for (const node of buildableNodes.slice(0, capacity)) {
       this.emit('node_build_will_start', node.nodeId);
       node.build = {
@@ -264,14 +275,11 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
         signal: node.build.abortController.signal,
       };
       // Request building in a microtask to avoid reenterability.
-      Promise.resolve().then(() => this._options.buildCallback.call(null, buildOptions));
-      this.emit('changed', node.nodeId);
-    }
-
-    const treeVersion = this._treeVersion();
-    if (this.treeBuildStatus() === 'complete' && this._lastCompleteTreeVersion !== treeVersion) {
-      this._lastCompleteTreeVersion = treeVersion;
-      this.emit('completed');
+      Promise.resolve().then(() => {
+        this._options.buildCallback.call(null, buildOptions)
+      }).finally(() => {
+        this.emit('node_build_did_start', node.nodeId);
+      });
     }
   }
 
@@ -292,7 +300,6 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
       return;
     node.build.success = success;
     node.build.durationMs = Date.now() - node.build.startTimestampMs;
-    this.emit('changed', node.nodeId);
     this.emit('node_build_finished', node.nodeId);
     this.build();
   }
