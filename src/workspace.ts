@@ -13,14 +13,13 @@ type UpdateData = {
   changedConfigs: Set<AbsolutePath>,
 }
 
-function renderCycleError(error: CycleError) {
-  const cycleMessage = error.cycle.map((nodeId, index): string => {
+function renderCycleError(cycle: string[]) {
+  const cycleMessage =cycle.map((projectName, index): string => {
     if (index === 0)
-      return '┌ ' + nodeId;
-    if (index !== error.cycle.length - 1)
-      return '│' + ' '.repeat(index + 1) + '└ ' + nodeId;
-    return '└' + '─'.repeat(index + 1) + '┴ ' + nodeId;
+      return '┌─▶' + projectName;
+    return '│' + ' '.repeat(2 + 3*(index - 1)) + '└─▶' + projectName;
   });
+  cycleMessage.push('└' + '─'.repeat(3 * (cycle.length - 1) + 2) + '┘')
   return ['Dependency cycle detected', ...cycleMessage].join('\n');
 }
 
@@ -82,12 +81,15 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     });
   }
 
-  private _nodeIdToProject(nodeId: string): Project {
+  private _projectName(nodeId: string) {
     const config = this._configs.get(nodeId as AbsolutePath)!;
+    return config.config?.name ? config.config.name : path.relative(process.cwd(), config.configPath);
+  }
+
+  private _nodeIdToProject(nodeId: string): Project {
     const status = this._buildTree.buildInfo(nodeId);
-    const name = config.config?.name ? config.config.name : path.relative(process.cwd(), config.configPath);
     return {
-      name,
+      name: this._projectName(nodeId),
       durationMs: status.durationMs,
       output: status.output,
       status: status.status,
@@ -202,7 +204,18 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       const children = value.config?.deps ?? [];
       projectTree.setAll(key, children);
     }
-    this._buildTree.setBuildTree(projectTree);
+
+    try {
+      this._buildTree.setBuildTree(projectTree);
+    } catch (e) {
+      if (e instanceof CycleError) {
+        const error = new Error(renderCycleError(e.cycle.map(nodeId => this._projectName(nodeId))));
+        error.stack = '';
+        throw error;
+      }
+        
+      throw e;
+    }
     this._reinitializeFileWatcher();
     this.emit('changed');
   }
