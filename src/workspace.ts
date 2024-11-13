@@ -170,7 +170,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
 
   async stop() {
     this._watchMode = false;
-    this._buildTree.abort();
+    this._buildTree.resetAllBuilds();
     await this._reinitializeFileWatcher();
     clearTimeout(this._updateData?.timeout);
   }
@@ -202,7 +202,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       this._updateData.timeout = setTimeout(this._doUpdate.bind(this), 150);
     } else {
       this._updateData = undefined;
-      this._buildTree.startBuilding();
+      this._buildTree.build();
     }
   }
 
