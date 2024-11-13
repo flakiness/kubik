@@ -36,9 +36,9 @@ function cliBuild(roots: AbsolutePath[], jobs: number) {
   });
   workspace.on('project_finished', project => {
     if (project.status === 'fail')
-      console.log(chalk.red(`[kubik] FAILED ${chalk.bold(project.name)} in ${timeInSeconds(project.durationMs)}`));
+      console.log(chalk.red(`[kubik] Failed ${chalk.bold(project.name)} in ${chalk.bold(timeInSeconds(project.durationMs))}`));
     else if (project.status === 'ok')
-      console.log(chalk.green(`[kubik] ${chalk.bold(project.name)} succeeded in ${timeInSeconds(project.durationMs)}`));
+      console.log(chalk.green(`[kubik] Succeeded ${chalk.bold(project.name)} in ${chalk.bold(timeInSeconds(project.durationMs))}`));
   });
 
   const logLine = jobs === 1 ? (project: Project, line: string) => console.log(line) : (project: Project, line: string) => console.log(`[${project.name}] ${line}`);
