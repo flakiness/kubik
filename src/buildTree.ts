@@ -74,14 +74,6 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
     super();
   }
 
-  /**
-   * The tree is "complete" if there's nothing to be built, and nothing is being built.
-   * @returns 
-   */
-  treeBuildStatus(): 'complete'|'incomplete' {
-    return this._buildableNodes().length === 0 && this._nodesBeingBuilt().length === 0 ? 'complete' : 'incomplete';
-  }
-
   buildStatus(nodeId: string): BuildStatus {
     const node = this._nodes.get(nodeId);
     assert(node, `Cannot get status for non-existing node with id "${nodeId}"`);
