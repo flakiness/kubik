@@ -4,13 +4,13 @@
 
 **Kubik** is a simple builder / task runner for node.js, designed specifically to build typescript monorepos.
 
-* [Quick Start](./#quick-start)
-* [Getting Started](./#getting-started)
-* [Watch Mode](./#watch-mode)
-* [Parallelization](./#watch-mode)
-* [Shebang](./#shebang-usage)
-* [API](./#api)
-* [Debugging](./#debugging)
+* [Quick Start](#quick-start)
+* [Getting Started](#getting-started)
+* [Watch Mode](#watch-mode)
+* [Parallelization](#watch-mode)
+* [Shebang](#shebang-usage)
+* [API](#api)
+* [Debugging](#debugging)
 
 ## Quick Start
 
