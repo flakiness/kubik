@@ -27,7 +27,7 @@ function renderProjectTitle(project: Project, isFocused: boolean = false) {
     status = chalk.grey('N/A');
     fillStyle = chalk.grey;
   } else if (project.status === 'pending') {
-    status = chalk.yellow(`⏱ ${'<unknown>'}`);
+    status = chalk.yellow(`⏱ `);
     fillStyle = chalk.yellow;
   } else if (project.status === 'running') {
     status = chalk.yellow(`Building...`);
@@ -174,6 +174,15 @@ class Layout {
     this._screen.key(['tab'], (ch, key) => {
       const focusedIndex = this._views.findIndex(view => view.isFocused());
       const newFocused = (focusedIndex + 1) % (this._views.length);
+      if (focusedIndex !== -1)
+        this._views[focusedIndex].blur();
+      this._views[newFocused].focus();
+      this.render();
+    });
+
+    this._screen.key(['S-tab'], (ch, key) => {
+      const focusedIndex = this._views.findIndex(view => view.isFocused());
+      const newFocused = (focusedIndex - 1 + this._views.length) % (this._views.length);
       if (focusedIndex !== -1)
         this._views[focusedIndex].blur();
       this._views[newFocused].focus();
