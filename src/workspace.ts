@@ -213,7 +213,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       stdio: 'pipe',
       env: {
         ...process.env,
-        KUBIK_WATCH_MODE: '1',
+        KUBIK_WATCH_MODE: this._watchMode ? '1' : undefined,
         KUBIK_RUNNER: '1',
       },
       windowsHide: true,

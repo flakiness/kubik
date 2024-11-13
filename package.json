@@ -13,8 +13,7 @@
   },
   "homepage": "https://github.com/flakiness/kubik",
   "scripts": {
-    "test": "npx playwright test",
-    "kubik": "./lib/cli.js"
+    "test": "npx playwright test"
   },
   "exports": {
     ".": {

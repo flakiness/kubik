@@ -166,6 +166,7 @@ class Layout {
     this._workspace = workspace;
     this._screen = blessed.screen({
       smartCSR: true,
+      terminal: 'tmux-256color',
     });
 
     workspace.on('changed', () => this.render());
