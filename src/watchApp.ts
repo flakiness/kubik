@@ -240,7 +240,7 @@ class Layout {
   constructor(workspace: Workspace) {
     this._workspace = workspace;
     this._screen = blessed.screen({
-      smartCSR: true,
+      smartCSR: false,
       terminal: 'tmux-256color',
       debug: true,
     });
