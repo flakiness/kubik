@@ -184,7 +184,10 @@ class ProjectView {
   setProject(project: Project) {
     this._project = project;
     this._titleBox.setContent(renderProjectTitle(project, this.isFocused()));
+    let isStickToBottom = this._contentBox.getScrollHeight() <= this._height || this._contentBox.getScrollPerc() === 100;
     this._contentBox.setContent(project.output().trim());
+    if (isStickToBottom)
+      this._contentBox.setScrollPerc(100);
   }
 
   project() {
