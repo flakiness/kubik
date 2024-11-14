@@ -2,11 +2,12 @@
 
 > ⚠️ **Warning:** Kubik is currently in pre-1.0.0 release. Expect potential changes and experimental features that may not be fully stable yet.
 
-**Kubik** is a simple builder / task runner for node.js, designed specifically to build typescript monorepos.
-Kubik uses `.mjs` scripts to define build tasks.
+**Kubik** is a simple task runner for node.js, designed specifically to build typescript monorepos.
+Kubik uses `.mjs` scripts to define tasks.
 
 * [Quick Start](#quick-start)
 * [Getting Started](#getting-started)
+* [Tasks vs Services](#tasks-vs-services)
 * [Watch Mode](#watch-mode)
 * [Parallelization](#watch-mode)
 * [Shebang](#shebang-usage)
@@ -23,9 +24,9 @@ A template script `build.mjs` to build typescript with esbuild and lint its type
 import path from 'path';
 import esbuild from 'esbuild';
 import fs from 'fs';
-import { BuildScript } from 'kubik';
+import { Task } from 'kubik';
 
-const { __dirname, $ } = BuildScript.initialize(import.meta, {
+const { __dirname, $ } = Task.init(import.meta, {
   name: 'build & lint',
   watch: [ './src' ],
 });
@@ -79,14 +80,14 @@ And you want to run this script after building some dependency, which has its ow
 console.log('Copied third-party!');
 ```
 
-You can use Kubik to declare dependencies in both scripts, using `BuildScript.initialize` method
+You can use Kubik to declare dependencies in both scripts, using `Task.init` method
 at the **very beginning** of your script:
 
 ```js
 // build-main.mjs
-import { BuildScript } from 'kubik';
+import { Task } from 'kubik';
 
-BuildScript.initialize(import.meta, {
+Task.init(import.meta, {
   deps: ['./build-third-party.mjs'], // these are relative to script folder
 });
 
@@ -97,9 +98,9 @@ console.log('Done.')
 
 ```js
 // build-third-party.mjs
-import { BuildScript } from 'kubik';
+import { Task } from 'kubik';
 
-BuildScript.initialize(import.meta);
+Task.init(import.meta);
 
 console.log('Copied third-party!');
 ```
@@ -108,6 +109,25 @@ Now to build dependencies, you can simply execute the first script with Kubik:
 
 ```bash
 npx kubik ./build-main.mjs
+```
+
+## Tasks vs Services
+
+By default, task is considered successful if its process completes with 0 exit code, and
+unsuccessful if it fails with non-zero code.
+
+However, certain tasks require a running process; for example, launching development server.
+In this case, you can use `Task.done()` to notify Kubik that the task completed and it's dependants
+can start executing:
+
+```ts
+import { Task } from 'kubik';
+
+Task.init(import.meta);
+
+setInterval(() => console.log(Date.now()), 150);
+// The process will keep running, but Kubik will know that this task is "done".
+Task.done();
 ```
 
 ## Watch Mode
@@ -137,12 +157,12 @@ By default, Kubik watches for changes in files commonly involved in build tasks,
 * `package-lock.json`
 * `tsconfig.json`
 
-However, you can customize files and directories to watch and to ignore during BuildScript initialization:
+However, you can customize files and directories to watch and to ignore during Task initialization:
 
 ```js
-import { BuildScript } from 'kubik';
+import { Task } from 'kubik';
 
-BuildScript.initialize(import.meta, {
+Task.init(import.meta, {
   deps: ['./build-third-party.mjs'],
   watch: ['./src'],  // these are relative to script folder
   ignore: ['./src/generated'],  // these are relative to script folder too
@@ -165,9 +185,9 @@ You can use kubik shebang in scripts, like this:
 ```js
 #!/usr/bin/env npx kubik
 
-import { BuildScript } from 'kubik';
+import { Task } from 'kubik';
 
-BuildScript.initialize(import.meta, {
+Task.init(import.meta, {
   watch: ['./src'],
   ignore: ['./src/generated'],
 });
@@ -175,31 +195,36 @@ BuildScript.initialize(import.meta, {
 
 ## API
 
-The `BuildScript.initialize` function prepares the build environment, offering utilities like `$` for shell commands (powered by [execa](https://github.com/sindresorhus/execa)), `__dirname`, and `__filename` based on the current script's context. 
+The `Task.init` function prepares the build environment, offering utilities like `$` for shell commands (powered by [execa](https://github.com/sindresorhus/execa)), `__dirname`, and `__filename` based on the current script's context. 
 
 The whole API boils down to the following:
 
 ```ts
 #!/usr/bin/env npx kubik
 
-import { BuildScript } from 'kubik';
+import { Task } from 'kubik';
 import fs from 'fs';
 
 const {
   $, // execa shell runner, that uses __dirname as CWD
   __dirname, // **this** script directory absolute path
   __filename, // **this** script file absolute path
-  isWatchMode, // wether the script is run under kubik's watch mode
-} = BuildScript.initialize(import.meta, {
+} = Task.init(import.meta, {
   name: 'my library',
   watch: ['./src'], // all the paths are resolved relative to this script
   ignore: ['./src/generated'], // relative to this script
   deps: ['../third-party/build.mjs'], // relative to this script
 });
 
+console.log(Task.isWatchMode()); // wether the script is being run under watch mode.
+
 // Use $ to run commands, e.g. typescript.
 // Note that $ uses __dirname as CWD.
 await $`tsc --pretty -p .`;
+
+// If node.js process does not exit (i.e. it runs a server),
+// then we can notify Kubik explicitly that the task is done.
+Task.done(); 
 ```
 
 ## Debugging
