@@ -1,4 +1,4 @@
-import { ChildProcess, spawn } from "child_process";
+import { spawn } from "child_process";
 import chokidar, { FSWatcher } from "chokidar";
 import EventEmitter from "events";
 import path from "path";
@@ -45,7 +45,6 @@ class InternalProject {
   private _output: string = '';
   private _startTimestampMs?: number;
   private _stopTimestampMs?: number;
-  private _subprocess?: ChildProcess;
 
   constructor(buildTree: BuildTree, configPath: AbsolutePath) {
     this._buildTree = buildTree;
