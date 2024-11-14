@@ -397,12 +397,12 @@ test('make sure that node build is reset when deps are changed', async () => {
     'finished: dep-1',
     'started: root',
   ]);
-  expect(tree.buildInfo('root').status).toBe('running');
+  expect(tree.nodeBuildStatus('root')).toBe('running');
 
   tree.setBuildTree(Multimap.fromEntries(Object.entries({
     'root': ['dep-2'],
   })));
-  expect(tree.buildInfo('root').status).toBe('pending');
+  expect(tree.nodeBuildStatus('root')).toBe('pending');
 });
 
 test('check build order', async () => {

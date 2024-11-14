@@ -1,4 +1,4 @@
-import { spawn } from "child_process";
+import { ChildProcess, spawn } from "child_process";
 import chokidar, { FSWatcher } from "chokidar";
 import EventEmitter from "events";
 import path from "path";
@@ -41,6 +41,11 @@ class InternalProject {
   private _config?: ReadConfigResult;
   private _watchMode: boolean = false;
   private _fsWatch?: FSWatcher;
+
+  private _output: string = '';
+  private _startTimestampMs?: number;
+  private _stopTimestampMs?: number;
+  private _subprocess?: ChildProcess;
 
   constructor(buildTree: BuildTree, configPath: AbsolutePath) {
     this._buildTree = buildTree;
@@ -102,26 +107,27 @@ class InternalProject {
   }
 
   toProject() {
-    const status = this._buildTree.buildInfo(this._configPath);
+    const status = this._buildTree.nodeBuildStatus(this._configPath);
     return {
       name: this.name(),
-      durationMs: status.durationMs,
-      output: status.output,
-      status: status.status,
+      durationMs: this._startTimestampMs && this._stopTimestampMs ? this._stopTimestampMs - this._startTimestampMs : 0,
+      output: this._output,
+      status: status,
     } as Project;
   }
 
   requestBuild(options: BuildOptions) {
     if (this._config?.error) {
-      options.onStdErr(this._config.error);
+      this._output = this._config.error;
       options.onComplete(false);
       return;
     }
 
     try {
-      const configPath = options.nodeId;
-      const subprocess = spawn(process.execPath, [configPath], {
-        cwd: path.dirname(configPath),
+      this._output = '';
+      this._startTimestampMs = Date.now();
+      const subprocess = spawn(process.execPath, [this._configPath], {
+        cwd: path.dirname(this._configPath),
         stdio: 'pipe',
         env: {
           ...process.env,
@@ -131,21 +137,41 @@ class InternalProject {
         windowsHide: true,
         detached: true,
       });
-      subprocess.stdout.on('data', data => options.onStdOut(data.toString('utf8')));
-      subprocess.stderr.on('data', data => options.onStdErr(data.toString('utf8')));
-      subprocess.on('close', code => options.onComplete(code === 0));
-      subprocess.on('error', error => options.onComplete(false));
-  
+      subprocess.stdout.on('data', data => this._onStdOut(data.toString('utf8')));
+      subprocess.stderr.on('data', data => this._onStdErr(data.toString('utf8')));
+
+      subprocess.on('close', code => {
+        this._stopTimestampMs = Date.now();
+        options.onComplete(code === 0);
+      });
+      subprocess.on('error', error => {
+        this._stopTimestampMs = Date.now();
+        options.onComplete(false);
+      });
+
       options.signal.addEventListener('abort', () => {
+        subprocess.stdout?.removeAllListeners();
+        subprocess.stderr?.removeAllListeners();
+        subprocess.removeAllListeners();
+        this._output = '';
         killProcessTree(subprocess, 'SIGKILL');
       });
     } catch (e) {
-      options.onStdErr(`Failed to launch ${options.nodeId}\n`);
+      this._output = `Failed to launch ${path.relative(process.cwd(), this._configPath)}\n`;
       if (e instanceof Error)
-        options.onStdErr(e.message);
+        this._output += e.message;
       options.onComplete(false);
     }
   }
+
+  private _onStdOut(text: string) {
+    this._output += text;
+  }
+
+  private _onStdErr(text: string) {
+    this._output += text;
+  }
+
 }
 
 type WorkspaceEvents = {

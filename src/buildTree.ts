@@ -5,11 +5,8 @@ import { Multimap } from "./multimap.js";
 import { sha256 } from "./utils.js";
 
 type Build = {
-  output: string[],
   success?: boolean,
   abortController: AbortController,
-  startTimestampMs: number,
-  durationMs: number,
   buildVersion: string,
 }
 
@@ -34,8 +31,6 @@ export type BuildOptions = {
   nodeId: string,
   signal: AbortSignal,
   onComplete: (success: boolean) => void,
-  onStdOut: (line: string) => void,
-  onStdErr: (line: string) => void,
 }
 
 export type BuildTreeOptions = {
@@ -75,17 +70,13 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
     super();
   }
 
-  buildInfo(nodeId: string): BuildInfo {
+  nodeBuildStatus(nodeId: string): BuildStatus {
     const node = this._nodes.get(nodeId);
     assert(node, `Cannot get status for non-existing node with id "${nodeId}"`);
-    return {
-      status: !node.build && this._computeTreeVersion() === this._lastCompleteTreeVersion ? 'n/a' :
+    return !node.build && this._computeTreeVersion() === this._lastCompleteTreeVersion ? 'n/a' :
               !node.build ? 'pending' :
               node.build && node.build.success === undefined ? 'running' :
-              node.build && node.build.success ? 'ok' : 'fail',
-      durationMs: node.build?.success ? node.build.durationMs : 0,
-      output: node.build?.output.join('') ?? '',
-    };
+              node.build && node.build.success ? 'ok' : 'fail';
   }
 
   private _checkNoCycles(tree: Multimap<string, string>) {
@@ -205,6 +196,12 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
     return result;
   }
 
+  nodeVersion(nodeId: string): string {
+    const node = this._nodes.get(nodeId);
+    assert(node);
+    return nodeVersion(node);
+  }
+
   /**
    * This will synchronously abort builds for the `nodeId` and all its parents.
    * @param nodeId
@@ -264,15 +261,10 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
       node.build = {
         abortController: new AbortController(),
         buildVersion: nodeVersion(node),
-        output: [],
-        startTimestampMs: Date.now(),
-        durationMs: 0,
       };
       const buildOptions: BuildOptions = {
         nodeId: node.nodeId,
         onComplete: this._onBuildComplete.bind(this, node, node.build.buildVersion),
-        onStdErr: this._onStdErr.bind(this, node, node.build.buildVersion),
-        onStdOut: this._onStdOut.bind(this, node, node.build.buildVersion),
         signal: node.build.abortController.signal,
       };
       // Request building in a microtask to avoid reenterability.
@@ -299,23 +291,8 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
     if (node.build?.buildVersion !== buildVersion)
       return;
     node.build.success = success;
-    node.build.durationMs = Date.now() - node.build.startTimestampMs;
     this.emit('node_build_finished', node.nodeId);
     this.build();
-  }
-
-  private _onStdErr(node: Node, buildVersion: string, line: string) {
-    if (node.build?.buildVersion !== buildVersion)
-      return;
-    node.build.output.push(line);
-    this.emit('node_build_stderr', node.nodeId, line);
-  }
-
-  private _onStdOut(node: Node, buildVersion: string, line: string) {
-    if (node.build?.buildVersion !== buildVersion)
-      return;
-    node.build.output.push(line);
-    this.emit('node_build_stdout', node.nodeId, line);
   }
 }
 
