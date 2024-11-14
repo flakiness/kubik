@@ -3,9 +3,9 @@
 import path from 'path';
 import esbuild from 'esbuild';
 import fs from 'fs';
-import { BuildScript } from 'kubik';
+import { Task } from 'kubik';
 
-const { __dirname, $ } = BuildScript.initialize(import.meta, {
+const { __dirname, $ } = Task.init(import.meta, {
   name: 'build & lint',
   watch: [ '../src', '../package.json' ],
 });
