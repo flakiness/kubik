@@ -1,9 +1,9 @@
-import { fork } from "child_process";
+import { ChildProcess, fork } from "child_process";
 import chokidar, { FSWatcher } from "chokidar";
 import EventEmitter from "events";
 import path from "path";
 import { BuildOptions, BuildTree } from "./buildTree.js";
-import { AbsolutePath, readConfigTree, toAbsolutePath } from "./configLoader.js";
+import { AbsolutePath, ReadConfigResult, readConfigTree, toAbsolutePath } from "./configLoader.js";
 import { Multimap } from "./multimap.js";
 import { killProcessTree } from "./process_utils.js";
 import { dbgWatchApp } from "./watchApp.js";
@@ -30,6 +30,8 @@ type WorkspaceOptions = {
   jobs: number,
 };
 
+export const NOTIFY_STARTED_MESSAGE = 'service started';
+
 export class Project {
   private _workspace: Workspace;
   private _configPath: AbsolutePath;
@@ -43,6 +45,7 @@ export class Project {
   private _output: string = '';
   private _startTimestampMs: number = Date.now();
   private _stopTimestampMs: number = Date.now();
+  private _subprocess?: ChildProcess;
 
   constructor(workspace: Workspace, buildTree: BuildTree, configPath: AbsolutePath) {
     this._workspace = workspace;
@@ -82,16 +85,16 @@ export class Project {
 
   configPath() { return this._configPath; }
 
-  setConfigurationError(error: any) {
-    if (this._configurationError === error)
-      return;
-    this._configurationError = error;
-    if (!this._configurationError) {
-      this._workspace.emit('changed');
-      return;
+  setConfiguration(result: ReadConfigResult) {
+    this._customName = result.config?.name;
+
+    if (this._configurationError !== result.error) {
+      this._configurationError = result.error;
+      if (this._configurationError) {
+        this._output = this._configurationError;
+        this._workspace.emit('project_stderr', this, this._output);
+      }
     }
-    this._output = String(this._configurationError);
-    this._workspace.emit('project_stderr', this, this._output);
     this._workspace.emit('changed');
   }
 
@@ -102,10 +105,6 @@ export class Project {
 
   name() {
     return this._customName ?? path.relative(process.cwd(), this._configPath);
-  }
-
-  setCustomName(name: string|undefined) {
-    this._customName = name;
   }
 
   status() {
@@ -125,10 +124,13 @@ export class Project {
       return;
     }
 
+    // Kill process if it is still running.
+    this._killProcess();
+
     try {
       this._output = '';
       this._startTimestampMs = Date.now();
-      const subprocess = fork(this._configPath, {
+      this._subprocess = fork(this._configPath, {
         cwd: path.dirname(this._configPath),
         stdio: 'pipe',
         env: {
@@ -138,24 +140,30 @@ export class Project {
         },
         detached: true,
       });
-      subprocess.stdout?.on('data', data => this._onStdOut(data.toString('utf8')));
-      subprocess.stderr?.on('data', data => this._onStdErr(data.toString('utf8')));
-
-      subprocess.on('close', code => {
+      options.signal.addEventListener('abort', () => this._killProcess());
+      this._subprocess.stdout?.on('data', data => this._onStdOut(data.toString('utf8')));
+      this._subprocess.stderr?.on('data', data => this._onStdErr(data.toString('utf8')));
+      
+      this._subprocess.on('message', msg => {
+        if (msg !== NOTIFY_STARTED_MESSAGE)
+          return;
         this._stopTimestampMs = Date.now();
-        options.onComplete(code === 0);
+        options.onComplete(true);
       });
-      subprocess.on('error', error => {
-        this._stopTimestampMs = Date.now();
-        options.onComplete(false);
+      this._subprocess.on('close', code => {
+        if (options.onComplete(code === 0)) {
+          this._stopTimestampMs = Date.now();  
+        } else {
+          this._onStdOut(`(process exited with code=${code})`);
+        }
+        this._killProcess();
       });
-
-      options.signal.addEventListener('abort', () => {
-        subprocess.stdout?.removeAllListeners();
-        subprocess.stderr?.removeAllListeners();
-        subprocess.removeAllListeners();
-        this._output = '';
-        killProcessTree(subprocess, 'SIGKILL');
+      this._subprocess.on('error', error => {
+        if (options.onComplete(false)) {
+          this._onStdErr(error.message);
+          this._stopTimestampMs = Date.now();
+        }
+        this._killProcess();
       });
     } catch (e) {
       this._output = `Failed to launch ${path.relative(process.cwd(), this._configPath)}\n`;
@@ -163,6 +171,17 @@ export class Project {
         this._output += e.message;
       options.onComplete(false);
     }
+  }
+
+  private _killProcess() {
+    if (!this._subprocess)
+      return;
+    this._subprocess.stdout?.removeAllListeners();
+    this._subprocess.stderr?.removeAllListeners();
+    this._subprocess.removeAllListeners();
+    // this._output = '';
+    killProcessTree(this._subprocess, 'SIGKILL');
+    this._subprocess = undefined;
   }
 
   private _onStdOut(text: string) {
@@ -175,6 +194,11 @@ export class Project {
     this._output += text;
     this._workspace.emit('project_stderr', this, text);
     this._workspace.emit('changed');
+  }
+
+  dispose() {
+    this.stopFileWatch();
+    this._killProcess();
   }
 }
 
@@ -255,7 +279,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     this._watchMode = false;
     this._buildTree.resetAllBuilds();
     for (const project of this._projects.values())
-      project.stopFileWatch();
+      project.dispose();
   }
 
   private async _doUpdate() {
@@ -313,7 +337,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     // Delete all projects that were removed.
     for (const [projectId, project] of this._projects) {
       if (!configs.has(projectId)) {
-        project.stopFileWatch();
+        project.dispose();
         this._projects.delete(projectId);
       }
     }
@@ -325,8 +349,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
         project = new Project(this, this._buildTree, config.configPath);
         this._projects.set(config.configPath, project);
       }
-      project.setConfigurationError(config.error);
-      project.setCustomName(config.config?.name);
+      project.setConfiguration(config);
       if (this._watchMode) {
         project.startFileWatch(config.config?.watch ?? [], config.config?.ignore ?? [], (project, filePath) => this._scheduleUpdate({
           changedProject: project,
@@ -334,7 +357,6 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
         }));
       }
     }
-
 
     this.emit('changed');
   }

@@ -1,5 +1,5 @@
 import path from "path";
-import { BuildScriptOptions } from "./import.js";
+import { TaskOptions } from "./import.js";
 import { spawnAsync } from "./process_utils.js";
 import { Brand } from "./utils.js";
 
@@ -52,7 +52,7 @@ async function readSingleConfig(configPath: AbsolutePath): Promise<ReadConfigRes
   if (code !== 0)
     return { configPath, error: 'failed to load configuration\n' + stdout};
   try {
-    let { name, watch = [], ignore = [], deps = [] } = JSON.parse(stdout) as BuildScriptOptions;
+    let { name, watch = [], ignore = [], deps = [] } = JSON.parse(stdout) as TaskOptions;
     if (!Array.isArray(watch))
       watch = [watch];
     if (!Array.isArray(ignore))

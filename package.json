@@ -13,6 +13,8 @@
   },
   "homepage": "https://github.com/flakiness/kubik",
   "scripts": {
+    "build": "cd ./bootstrap && ./build.mjs",
+    "watch": "cd ./bootstrap && ./build.mjs -w",
     "test": "npx playwright test"
   },
   "exports": {
@@ -31,10 +33,7 @@
   "devDependencies": {
     "@playwright/test": "^1.48.2",
     "@types/blessed": "^0.1.25",
-    "@types/node": "^22.9.0",
-    "esbuild": "^0.24.0",
-    "kubik": "^0.2.0",
-    "typescript": "^5.6.3"
+    "@types/node": "^22.9.0"
   },
   "dependencies": {
     "chalk": "^5.3.0",

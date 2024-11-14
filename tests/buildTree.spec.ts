@@ -439,3 +439,26 @@ test('should abort only once', async () => {
     'aborted: root',
   ]);
 });
+
+test('cannot report status twice', async () => {
+  let resolve: () => void;
+  const promise = new Promise<void>(x => resolve = x);
+  const tree = new BuildTree({ buildCallback: async (options) => {
+    await Promise.resolve();
+    options.onComplete(true);
+    await Promise.resolve();
+    options.onComplete(false);
+    resolve();
+  }, jobs: Infinity });
+  const logger = new Logger(tree);
+  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+    'root': [],
+  })));
+  tree.build();
+  await promise;
+  expect(logger.pull()).toEqual([
+    'started: root',
+    'finished: root',
+  ]);
+  expect(tree.nodeBuildStatus('root')).toBe('ok');
+});

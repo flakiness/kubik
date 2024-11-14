@@ -7,12 +7,12 @@ import { BuildScript } from 'kubik';
 
 const { __dirname, $ } = BuildScript.initialize(import.meta, {
   name: 'build & lint',
-  watch: [ './src', './package.json' ],
+  watch: [ '../src', '../package.json' ],
 });
 
-const outDir = path.join(import.meta.dirname, 'lib');
-const srcDir = path.join(import.meta.dirname, 'src');
-const typesDir = path.join(import.meta.dirname, 'types');
+const outDir = path.join(import.meta.dirname, '..', 'lib');
+const srcDir = path.join(import.meta.dirname, '..', 'src');
+const typesDir = path.join(import.meta.dirname, '..', 'types');
 await fs.promises.rm(outDir, { recursive: true }).catch(e => void e);
 await fs.promises.rm(typesDir, { recursive: true }).catch(e => void e);
 
@@ -31,4 +31,4 @@ const { errors } = await esbuild.build({
 });
 
 if (!errors.length)
-  await $`tsc --pretty -p .`;
+  await $`tsc --pretty -p ..`;

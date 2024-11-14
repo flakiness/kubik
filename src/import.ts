@@ -1,8 +1,9 @@
 import { $, ExecaScriptMethod } from 'execa';
 import path from "path";
 import url from 'url';
+import { NOTIFY_STARTED_MESSAGE } from './workspace.js';
 
-export type BuildScriptOptions = {
+export type TaskOptions = {
   /**
    * Optional script name. It will be used for output logs and watch mode.
    */
@@ -21,7 +22,7 @@ export type BuildScriptOptions = {
   deps?: string | string[],
 }
 
-export type ScriptUtils = {
+export type TaskUtils = {
   /**
    * Absolute path of the script directory
    */
@@ -31,37 +32,49 @@ export type ScriptUtils = {
    */
   __filename: string,
   /**
-   * Wether the script is run under Kubik's watch mode
-   */
-  isWatchMode: boolean,
-  /**
    * An execa instance, with current working directory bound to script's directory.
    */
   $: ExecaScriptMethod,
 }
 
-export class BuildScript {
+export class Task {
   /**
-   * Initialize a BuildScript so that Kubik knows how to run it.
+   * Initialize a Task so that Kubik knows how to run it.
    * 
    * @param meta pass your scripts `import.meta` as the first parameter
    * @param options 
    * @returns 
    */
-  static initialize(meta: { url: string }, options: BuildScriptOptions = {}): ScriptUtils {
+  static init(meta: { url: string }, options: TaskOptions = {}): TaskUtils {
     if (process.env.KUBIK_DUMP_CONFIGURATION) {
       console.log(JSON.stringify(options));
       process.exit(0);
     }
-    if (!process.env.KUBIK_RUNNER)
+    if (!process.env.KUBIK_RUNNER) {
       console.warn(`[kubik] NOTE: Building without dependencies; run 'npx kubik ${path.basename(process.argv[1])}' to build tree.`);
+    }
     const filename = url.fileURLToPath(meta.url);
     const dirname = path.dirname(filename);
     return {
       __dirname: dirname,
       __filename: filename,
-      isWatchMode: !!process.env.KUBIK_WATCH_MODE,
       $: $({ cwd: dirname, stdio: 'inherit' }),
     };
+  }
+
+  static isWatchMode(): boolean {
+    return !!process.env.KUBIK_WATCH_MODE;
+  }
+
+  /**
+   * By default, tasks are considered failed when they exis with non-zero code,
+   * and succeeded when they exit with zero code.
+   * 
+   * Certain tasks, for example, start a server, and succeed when the server is running.
+   * This process doesn't end, and these tasks can be marked as completed manually.
+   */
+  static done() {
+    if (process.env.KUBIK_RUNNER)
+      process.send?.call(process, NOTIFY_STARTED_MESSAGE);
   }
 }

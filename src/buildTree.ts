@@ -30,7 +30,7 @@ type Node = {
 export type BuildOptions = {
   nodeId: string,
   signal: AbortSignal,
-  onComplete: (success: boolean) => void,
+  onComplete: (success: boolean) => boolean,
 }
 
 export type BuildTreeOptions = {
@@ -295,11 +295,12 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
   }
 
   private _onBuildComplete(node: Node, buildVersion: string, success: boolean) {
-    if (node.build?.buildVersion !== buildVersion)
-      return;
+    if (node.build?.buildVersion !== buildVersion || node.build.success !== undefined)
+      return false;
     node.build.success = success;
     this.emit('node_build_finished', node.nodeId);
     this.build();
+    return true;
   }
 }
 
