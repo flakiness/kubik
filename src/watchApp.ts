@@ -181,13 +181,22 @@ class ProjectView {
     this._contentBox.top = y + 1;
   }
 
+  isStickToBottom() {
+    return this._contentBox.getScrollHeight() <= this._height || this._contentBox.getScrollPerc() === 100;
+  }
+
+  scrollToBottom() {
+    this._contentBox.setScrollPerc(100);
+  }
+
+  setScroll(line: number) {
+    this._contentBox.setScroll(line);
+  }
+
   setProject(project: Project) {
     this._project = project;
     this._titleBox.setContent(renderProjectTitle(project, this.isFocused()));
-    let isStickToBottom = this._contentBox.getScrollHeight() <= this._height || this._contentBox.getScrollPerc() === 100;
     this._contentBox.setContent(project.output().trim());
-    if (isStickToBottom)
-      this._contentBox.setScrollPerc(100);
   }
 
   project() {
@@ -238,6 +247,13 @@ class Layout {
     gDebug = this._screen.debug.bind(this._screen);
 
     workspace.on('changed', () => this.render());
+    workspace.on('project_finished', project => {
+      if (project.status() !== 'fail')
+        return;
+      const index = this._projects.indexOf(project);
+      const view = this._views[index];
+      view.setScroll(0);
+    });
 
     this._screen.key(['tab'], (ch, key) => {
       const focusedIndex = this._views.findIndex(view => view.isFocused());
@@ -294,6 +310,9 @@ class Layout {
       this._views.pop()?.dispose();
     while (this._views.length < this._projects.length)
       this._views.push(new ProjectView(this._screen));
+
+    const stickedToBottom = new Set<ProjectView>(this._views.filter(view => view.isStickToBottom()));
+
     this._projects.forEach((project, index) => this._views[index].setProject(project));
 
     // do layout
@@ -328,6 +347,11 @@ class Layout {
     for (const view of this._views) {
       view.setTop(y);
       y += view.getHeight();
+    }
+
+    for (const view of stickedToBottom) {
+      if (view.project()?.status() !== 'fail')
+        view.scrollToBottom();
     }
 
     this._screen.render();
