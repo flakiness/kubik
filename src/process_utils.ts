@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { execSync, spawnSync, spawn } from 'child_process';
-import type { SpawnOptionsWithoutStdio, ChildProcess } from 'child_process';
+import type { ChildProcess, SpawnOptionsWithoutStdio } from 'child_process';
+import { execSync, spawn, spawnSync } from 'child_process';
 import fs from 'fs';
 
 type ProcessData = {
@@ -120,17 +120,17 @@ export function killProcessTree(childProcess: ChildProcess, signal: 'SIGINT' | '
   }
 }
 
-export async function spawnAsync(cmd: string, args: string[], options: SpawnOptionsWithoutStdio): Promise<{ code: number, output: string }> {
+export async function spawnAsync(cmd: string, args: string[], options: SpawnOptionsWithoutStdio): Promise<{ code: number, stdout: string, stderr: string }> {
   return await new Promise((resolve, reject) => {
     const subprocess = spawn(cmd, args, {
       ...options,
       stdio: 'pipe',
       windowsHide: true,
     });
-    let output = '';
-    subprocess.stdout.on('data', data => output += data);
-    subprocess.stderr.on('data', data => output += data);
-    subprocess.on('close', code => resolve({ code: code as number, output }));
+    let stdout = '', stderr = '';
+    subprocess.stdout.on('data', data => stdout += data);
+    subprocess.stderr.on('data', data => stderr += data);
+    subprocess.on('close', code => resolve({ code: code as number, stdout, stderr }));
     subprocess.on('error', error => reject(error));
   });
 }

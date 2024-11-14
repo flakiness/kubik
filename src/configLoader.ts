@@ -43,16 +43,16 @@ export async function readConfigTree(roots: AbsolutePath[]): Promise<Map<Absolut
 
 async function readSingleConfig(configPath: AbsolutePath): Promise<ReadConfigResult> {
   // We have to load config in a sub-process to bust require cache.
-  const { code, output } = await spawnAsync(process.execPath, [configPath], {
+  const { code, stdout } = await spawnAsync(process.execPath, [configPath], {
     env: {
       ...process.env,
       KUBIK_DUMP_CONFIGURATION: '1',
     }
   });
   if (code !== 0)
-    return { configPath, error: 'failed to load configuration\n' + output};
+    return { configPath, error: 'failed to load configuration\n' + stdout};
   try {
-    let { name, watch = [], ignore = [], deps = [] } = JSON.parse(output) as BuildScriptOptions;
+    let { name, watch = [], ignore = [], deps = [] } = JSON.parse(stdout) as BuildScriptOptions;
     if (!Array.isArray(watch))
       watch = [watch];
     if (!Array.isArray(ignore))

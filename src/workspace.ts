@@ -1,26 +1,27 @@
-import { spawn } from "child_process";
+import { fork } from "child_process";
 import chokidar, { FSWatcher } from "chokidar";
 import EventEmitter from "events";
 import path from "path";
-import { BuildOptions, BuildStatus, BuildTree, CycleError } from "./buildTree.js";
-import { AbsolutePath, ReadConfigResult, readConfigTree, toAbsolutePath } from "./configLoader.js";
+import { BuildOptions, BuildTree } from "./buildTree.js";
+import { AbsolutePath, readConfigTree, toAbsolutePath } from "./configLoader.js";
 import { Multimap } from "./multimap.js";
 import { killProcessTree } from "./process_utils.js";
 
 type UpdateData = {
   timeout: NodeJS.Timeout,
   needsRereadConfigFiles: boolean,
-  changedProjects: Set<InternalProject>,
+  changedProjects: Set<Project>,
 }
 
 function renderCycleError(cycle: string[]) {
-  const cycleMessage =cycle.map((projectName, index): string => {
-    if (index === 0)
-      return '┌─▶' + projectName;
-    return '│' + ' '.repeat(2 + 3*(index - 1)) + '└─▶' + projectName;
+  const cycleMessage = cycle.map((nodeId, index): string => {
+    const name = path.relative(process.cwd(), nodeId);
+    return (index === 0) ?
+      '┌─▶' + name :
+      '│' + ' '.repeat(2 + 3 * (index - 1)) + '└─▶' + name;
   });
   cycleMessage.push('└' + '─'.repeat(3 * (cycle.length - 1) + 2) + '┘')
-  return ['Dependency cycle detected', ...cycleMessage].join('\n');
+  return ['Dependency cycle detected:', ...cycleMessage].join('\n');
 }
 
 type WorkspaceOptions = {
@@ -28,58 +29,33 @@ type WorkspaceOptions = {
   jobs: number,
 };
 
-export type Project = {
-  name: string;
-  status: BuildStatus,
-  durationMs: number,
-  output: string,
-}
-
-class InternalProject {
+export class Project {
+  private _workspace: Workspace;
   private _configPath: AbsolutePath;
   private _buildTree: BuildTree;
-  private _config?: ReadConfigResult;
-  private _watchMode: boolean = false;
+
   private _fsWatch?: FSWatcher;
+  
+  private _customName?: string;
+  private _configurationError?: any;
 
   private _output: string = '';
-  private _startTimestampMs?: number;
-  private _stopTimestampMs?: number;
+  private _startTimestampMs: number = Date.now();
+  private _stopTimestampMs: number = Date.now();
 
-  constructor(buildTree: BuildTree, configPath: AbsolutePath) {
+  constructor(workspace: Workspace, buildTree: BuildTree, configPath: AbsolutePath) {
+    this._workspace = workspace;
     this._buildTree = buildTree;
     this._configPath = configPath;
   }
 
-  async startFileWatch(onFilesChanged?: (project: InternalProject, filePath: AbsolutePath) => void) {
-    this._watchMode = true;
-    await this._reinitializeFileWatcher(onFilesChanged);
-  }
-
-  async stopFileWatch() {
-    this._watchMode = false;
-    await this._reinitializeFileWatcher();
-  }
-
-  private async _reinitializeFileWatcher(onFilesChanged?: (project: InternalProject, filePath: AbsolutePath) => void) {
-    this._fsWatch?.removeAllListeners();
-    await this._fsWatch?.close();
-    this._fsWatch = undefined;
-
-    if (!this._watchMode)
-      return;
-
-    const toWatch: AbsolutePath[] = [];
-    const toIgnore: AbsolutePath[] = [];
-    toWatch.push(this._configPath);
-    if (this._config?.config) {
-      toWatch.push(...this._config.config.watch);
-      toIgnore.push(...this._config.config.ignore);
-    }
+  async startFileWatch(toWatch: AbsolutePath[], toIgnore: AbsolutePath[], onFilesChanged?: (project: Project, filePath: AbsolutePath) => void) {
+    await this.stopFileWatch();
 
     // Also, start watching for tsconfig.json, package.json, package-lock.json by default.
     const configDir = path.dirname(this._configPath) as AbsolutePath;
     toWatch.push(...[
+      this._configPath,
       toAbsolutePath(configDir, 'tsconfig.json'),
       toAbsolutePath(configDir, 'package.json'),
       toAbsolutePath(configDir, 'package-lock.json'),
@@ -95,29 +71,55 @@ class InternalProject {
     });
   }
 
+  async stopFileWatch() {
+    const fsWatch = this._fsWatch;
+    this._fsWatch = undefined;
+
+    fsWatch?.removeAllListeners();
+    await fsWatch?.close();
+  }
+
   configPath() { return this._configPath; }
 
+  setConfigurationError(error: any) {
+    if (this._configurationError === error)
+      return;
+    this._configurationError = error;
+    if (!this._configurationError) {
+      this._workspace.emit('changed');
+      return;
+    }
+    this._output = String(this._configurationError);
+    this._workspace.emit('project_stderr', this, this._output);
+    this._workspace.emit('changed');
+  }
+
+  durationMs() {
+    const status = this.status();
+    return (status === 'fail' || status === 'ok') ? this._stopTimestampMs - this._startTimestampMs : 0;
+  }
+
   name() {
-    return this._config?.config?.name ? this._config.config.name : path.relative(process.cwd(), this._configPath);
+    return this._customName ?? path.relative(process.cwd(), this._configPath);
   }
 
-  setConfigResult(config: ReadConfigResult) {
-    this._config = config;
+  setCustomName(name: string|undefined) {
+    this._customName = name;
   }
 
-  toProject() {
-    const status = this._buildTree.nodeBuildStatus(this._configPath);
-    return {
-      name: this.name(),
-      durationMs: this._startTimestampMs && this._stopTimestampMs ? this._stopTimestampMs - this._startTimestampMs : 0,
-      output: this._output,
-      status: status,
-    } as Project;
+  status() {
+    return this._buildTree.nodeBuildStatus(this._configPath);
+  }
+
+  output() {
+    return this._output;
   }
 
   requestBuild(options: BuildOptions) {
-    if (this._config?.error) {
-      this._output = this._config.error;
+    // Fail build right away if there's some configuration error.
+    if (this._configurationError) {
+      this._startTimestampMs = Date.now();
+      this._stopTimestampMs = Date.now();
       options.onComplete(false);
       return;
     }
@@ -125,19 +127,18 @@ class InternalProject {
     try {
       this._output = '';
       this._startTimestampMs = Date.now();
-      const subprocess = spawn(process.execPath, [this._configPath], {
+      const subprocess = fork(this._configPath, {
         cwd: path.dirname(this._configPath),
         stdio: 'pipe',
         env: {
           ...process.env,
-          KUBIK_WATCH_MODE: this._watchMode ? '1' : undefined,
+          KUBIK_WATCH_MODE: this._fsWatch ? '1' : undefined,
           KUBIK_RUNNER: '1',
         },
-        windowsHide: true,
         detached: true,
       });
-      subprocess.stdout.on('data', data => this._onStdOut(data.toString('utf8')));
-      subprocess.stderr.on('data', data => this._onStdErr(data.toString('utf8')));
+      subprocess.stdout?.on('data', data => this._onStdOut(data.toString('utf8')));
+      subprocess.stderr?.on('data', data => this._onStdErr(data.toString('utf8')));
 
       subprocess.on('close', code => {
         this._stopTimestampMs = Date.now();
@@ -175,6 +176,7 @@ class InternalProject {
 
 type WorkspaceEvents = {
   'changed': [],
+  'workspace_error': [string],
   'project_started': [Project],
   'project_finished': [Project],
   'project_stdout': [Project, string],
@@ -183,12 +185,14 @@ type WorkspaceEvents = {
 
 export class Workspace extends EventEmitter<WorkspaceEvents> {
   private _buildTree: BuildTree;
-  private _projects = new Map<AbsolutePath, InternalProject>();
+  private _projects = new Map<AbsolutePath, Project>();
 
   private _updateData?: UpdateData;
   private _roots: AbsolutePath[] = [];
 
   private _watchMode: boolean;
+
+  private _workspaceError?: string;
 
   constructor(options: WorkspaceOptions) {
     super();
@@ -202,28 +206,32 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     });
     
     this._buildTree.on('node_build_started', (nodeId) => {
-      this.emit('project_started', this._projects.get(nodeId as AbsolutePath)!.toProject());
+      this.emit('project_started', this._projects.get(nodeId as AbsolutePath)!);
       this.emit('changed');
     });
     this._buildTree.on('node_build_finished', (nodeId) => {
-      this.emit('project_finished', this._projects.get(nodeId as AbsolutePath)!.toProject())
+      this.emit('project_finished', this._projects.get(nodeId as AbsolutePath)!)
       this.emit('changed');
     });
     this._buildTree.on('node_build_aborted', () => this.emit('changed'));
 
     this._buildTree.on('node_build_stderr', (nodeId, line) => {
-      this.emit('project_stderr', this._projects.get(nodeId as AbsolutePath)!.toProject(), line);
+      this.emit('project_stderr', this._projects.get(nodeId as AbsolutePath)!, line);
       this.emit('changed');
     });
     this._buildTree.on('node_build_stdout', (nodeId, line) => {
-      this.emit('project_stdout', this._projects.get(nodeId as AbsolutePath)!.toProject(), line);
+      this.emit('project_stdout', this._projects.get(nodeId as AbsolutePath)!, line);
       this.emit('changed');
     });
   }
 
+  workspaceError() {
+    return this._workspaceError;
+  }
+
   projects(): Project[] {
     const nodeIds = this._buildTree.topsort();
-    return nodeIds.map(nodeId => this._projects.get(nodeId as AbsolutePath)!.toProject());
+    return nodeIds.map(nodeId => this._projects.get(nodeId as AbsolutePath)!);
   }
 
   setRoots(roots: AbsolutePath[]) {
@@ -231,7 +239,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     this._scheduleUpdate({ needsRereadConfigFiles: true });
   }
 
-  private _scheduleUpdate(options: { changedProject?: InternalProject, needsRereadConfigFiles?: boolean }) {
+  private _scheduleUpdate(options: { changedProject?: Project, needsRereadConfigFiles?: boolean }) {
     if (!options.changedProject && !options.needsRereadConfigFiles)
       return;
     if (!this._updateData) {
@@ -269,7 +277,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
 
     // First, propogate changes to the build tree.
     for (const changedProject of changedProjects)
-      this._buildTree.markChanged(changedProject.configPath());
+      this._buildTree.markChanged(changedProject.configPath());  
 
     // Next, if some of the configuration files changed, than we have to re-read the configs
     // and update the build tree.
@@ -294,35 +302,42 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       projectTree.setAll(key, children);
     }
 
-    try {
-      const { addedNodes, removedNodes } = this._buildTree.setBuildTree(projectTree);
-      for (const nodeId of removedNodes) {
-        const project = this._projects.get(nodeId as AbsolutePath);
-        project?.stopFileWatch();
-        this._projects.delete(nodeId as AbsolutePath);
-      }
-      for (const nodeId of addedNodes) {
-        const project = new InternalProject(this._buildTree, nodeId as AbsolutePath);
-        this._projects.set(nodeId as AbsolutePath, project);
-      }
-      // For all existing projects, update configuration, and re-initialize watches.
-      for (const project of this._projects.values()) {
-        project.setConfigResult(configs.get(project.configPath())!);
-        if (this._watchMode) {
-          project.startFileWatch((project, filePath) => this._scheduleUpdate({
-            changedProject: project,
-            needsRereadConfigFiles: filePath === project.configPath(),
-          }));
-        }
-      }
-    } catch (e) {
-      if (e instanceof CycleError) {
-        const error = new Error(renderCycleError(e.cycle.map(nodeId => path.relative(process.cwd(), nodeId))));
-        error.stack = '';
-        throw error;
-      }
-      throw e;
+    const cycle = BuildTree.findDependencyCycle(projectTree);
+    if (cycle) {
+      this._workspaceError = renderCycleError(cycle);
+      this._buildTree.clear();
+      this.emit('workspace_error', this._workspaceError);
+      this.emit('changed');
+    } else {
+      this._workspaceError = undefined;
+      this._buildTree.setBuildTree(projectTree);
     }
+
+    // Delete all projects that were removed.
+    for (const [projectId, project] of this._projects) {
+      if (!configs.has(projectId)) {
+        project.stopFileWatch();
+        this._projects.delete(projectId);
+      }
+    }
+
+    // Create new projects and update configuration for existing projects.
+    for (const config of configs.values()) {
+      let project = this._projects.get(config.configPath);
+      if (!project) {
+        project = new Project(this, this._buildTree, config.configPath);
+        this._projects.set(config.configPath, project);
+      }
+      project.setConfigurationError(config.error);
+      project.setCustomName(config.config?.name);
+      if (this._watchMode) {
+        project.startFileWatch(config.config?.watch ?? [], config.config?.ignore ?? [], (project, filePath) => this._scheduleUpdate({
+          changedProject: project,
+          needsRereadConfigFiles: filePath === project.configPath(),
+        }));
+      }
+    }
+
     this.emit('changed');
   }
 }

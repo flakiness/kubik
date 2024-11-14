@@ -32,13 +32,17 @@ function cliBuild(roots: AbsolutePath[], jobs: number) {
   workspace.setRoots(roots);
 
   workspace.on('project_started', project => {
-    console.log(chalk.yellow(`[kubik] Starting ${chalk.bold(project.name)}...`));
+    console.log(chalk.yellow(`[kubik] Starting ${chalk.bold(project.name())}...`));
   });
   workspace.on('project_finished', project => {
-    if (project.status === 'fail')
-      console.log(chalk.red(`[kubik] Failed ${chalk.bold(project.name)} in ${chalk.bold(timeInSeconds(project.durationMs))}`));
-    else if (project.status === 'ok')
-      console.log(chalk.green(`[kubik] Succeeded ${chalk.bold(project.name)} in ${chalk.bold(timeInSeconds(project.durationMs))}`));
+    if (project.status() === 'fail')
+      console.log(chalk.red(`[kubik] Failed ${chalk.bold(project.name())} in ${chalk.bold(timeInSeconds(project.durationMs()))}`));
+    else if (project.status() === 'ok')
+      console.log(chalk.green(`[kubik] Succeeded ${chalk.bold(project.name())} in ${chalk.bold(timeInSeconds(project.durationMs()))}`));
+  });
+  workspace.on('workspace_error', (error) => {
+    console.error(error);
+    process.exitCode = 1;
   });
 
   // For a sequential build, pipe stdout.
@@ -46,7 +50,7 @@ function cliBuild(roots: AbsolutePath[], jobs: number) {
     workspace.on('project_stdout', (project, text) => process.stdout.write(text));
     workspace.on('project_stderr', (project, text) => process.stderr.write(text));
   } else {
-    const logLine = (project: Project, line: string) => console.log(`[${project.name}] ${line}`);
+    const logLine = (project: Project, line: string) => console.log(`[${project.name()}] ${line}`);
     workspace.on('project_stderr', (project, text) => {
       for (const line of text.trim().split('\n'))
         logLine(project, line);

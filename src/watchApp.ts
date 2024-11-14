@@ -7,25 +7,25 @@ import { stripAnsi, timeInSeconds } from './utils.js';
 import { Project, Workspace } from './workspace.js';
 
 function renderProjectTitle(project: Project, isFocused: boolean = false) {
-  const buildingTime = chalk.yellow(timeInSeconds(project.durationMs));
+  const buildingTime = chalk.yellow(timeInSeconds(project.durationMs()));
 
   let status = '';
   let fillStyle = chalk.grey;
-  let projectName = isFocused ? `[ ${project.name} ]` : project.name;
-  if (project.status === 'fail') {
+  let projectName = isFocused ? `[ ${project.name()} ]` : project.name();
+  if (project.status() === 'fail') {
     status = chalk.red('FAIL') + ' ' + buildingTime;
     projectName = chalk.red(projectName);
     fillStyle = chalk.red;
-  } else if (project.status === 'ok') {
+  } else if (project.status() === 'ok') {
     status = chalk.green('OK') + ' ' + buildingTime;
     fillStyle = chalk.green;
-  } else if (project.status === 'n/a') {
+  } else if (project.status() === 'n/a') {
     status = chalk.grey('N/A');
     fillStyle = chalk.grey;
-  } else if (project.status === 'pending') {
+  } else if (project.status() === 'pending') {
     status = chalk.yellow(`⏱ `);
     fillStyle = chalk.yellow;
-  } else if (project.status === 'running') {
+  } else if (project.status() === 'running') {
     status = chalk.yellow(`Building...`);
     fillStyle = chalk.yellow;
   }
@@ -43,6 +43,65 @@ function renderProjectTitle(project: Project, isFocused: boolean = false) {
   const fillLeftLength = ((process.stdout.columns - headerLength) >> 1) - stripAnsi(left).length;
   const fillRightLength = ((process.stdout.columns - headerLength + 1) >> 1) - stripAnsi(right).length;
   return left + fillStyle(filler.repeat(fillLeftLength)) + middle + fillStyle(filler.repeat(fillRightLength)) + right;
+}
+
+class ErrorView {
+  private _screen: blessed.Widgets.Screen;
+  private _contentBox: blessed.Widgets.BoxElement;
+
+  constructor(screen: blessed.Widgets.Screen) {
+    this._screen = screen;
+    this._contentBox = blessed.box({
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      content: '',
+      scrollbar: {
+        ch: ' ',
+        style: {
+          bg: 'white',
+        },
+        track: {
+          bg: 'grey',
+        }
+      },
+      keys: true, // Enable keyboard navigation
+      vi: true, // Use vi-style keys for navigation
+      mouse: true, // Enable mouse support for scrolling
+      _border: {
+        type: 'line',
+        left: true,
+        top: false,
+        right: false,
+        bottom: false
+      },
+      scrollable: true,
+      alwaysScroll: true,
+      tags: false,
+      _style: {
+        _focus: {
+          _border: {
+            fg: 'yellow',
+            type: 'line'
+          },
+        },
+      },
+    });
+    screen.append(this._contentBox);
+  }
+
+  setMessage(text: string) {
+    this._contentBox.setContent(text);
+  }
+
+  focus() {
+    this._contentBox.focus();
+  }
+
+  dispose() {
+    this._screen.remove(this._contentBox);
+  }
 }
 
 class ProjectView {
@@ -125,7 +184,7 @@ class ProjectView {
   setProject(project: Project) {
     this._project = project;
     this._titleBox.setContent(renderProjectTitle(project, this.isFocused()));
-    this._contentBox.setContent(project.output.trim());
+    this._contentBox.setContent(project.output().trim());
   }
 
   project() {
@@ -155,6 +214,7 @@ class ProjectView {
 class Layout {
   private _screen: blessed.Widgets.Screen;
   private _views: ProjectView[] = [];
+  private _errorView?: ErrorView;
   private _projects: Project[] = [];
   private _workspace: Workspace;
 
@@ -195,6 +255,20 @@ class Layout {
   }
 
   render() {
+    const workspaceError = this._workspace.workspaceError();
+    if (workspaceError) {
+      // Dispose all project views.
+      while (this._views.length > 0)
+        this._views.pop()?.dispose();
+      if (!this._errorView)
+        this._errorView = new ErrorView(this._screen);
+      this._errorView.setMessage(workspaceError);
+      this._screen.render();
+      return;
+    }
+    this._errorView?.dispose();
+    this._errorView = undefined;
+
     this._projects = this._workspace.projects();
     // Make sure we have enough views to cover the projects and associate them.
     while (this._views.length > this._projects.length)
@@ -217,7 +291,7 @@ class Layout {
 
     while (heightLeftover > 0) {
       const scrollingViews = this._views.filter(view => view.requiredHeight() > view.getHeight());
-      const scrollingFailingViews = scrollingViews.filter(view => view.project()?.status === 'fail');
+      const scrollingFailingViews = scrollingViews.filter(view => view.project()?.status() === 'fail');
       const views = scrollingFailingViews.length ? scrollingFailingViews : scrollingViews;
 
       if (views.length === 0)

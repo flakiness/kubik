@@ -10,9 +10,9 @@ const { __dirname, $ } = BuildScript.initialize(import.meta, {
   watch: [ './src', './package.json' ],
 });
 
-const outDir = path.join(__dirname, 'lib');
-const srcDir = path.join(__dirname, 'src');
-const typesDir = path.join(__dirname, 'types');
+const outDir = path.join(import.meta.dirname, 'lib');
+const srcDir = path.join(import.meta.dirname, 'src');
+const typesDir = path.join(import.meta.dirname, 'types');
 await fs.promises.rm(outDir, { recursive: true }).catch(e => void e);
 await fs.promises.rm(typesDir, { recursive: true }).catch(e => void e);
 

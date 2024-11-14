@@ -62,6 +62,36 @@ type BuildTreeEvents = {
 }
 
 export class BuildTree extends EventEmitter<BuildTreeEvents> {
+
+  static findDependencyCycle(tree: Multimap<string, string>) {
+    const stackIndexes = new Map<string, number>();
+    const visited = new Set<string>();
+    const findCycle = (nodeId: string, stack: string[] = []): (string[]|undefined) => {
+      const stackIndex = stackIndexes.get(nodeId);
+      if (stackIndex !== undefined)
+        return stack.slice(stackIndex);
+
+      if (visited.has(nodeId))
+        return;
+      visited.add(nodeId);
+
+      stackIndexes.set(nodeId, stack.push(nodeId) - 1);
+      for (const child of tree.getAll(nodeId)) {
+        const cycle = findCycle(child, stack);
+        if (cycle)
+          return cycle;
+      }
+      stack.pop();
+      stackIndexes.delete(nodeId);
+    }
+    for (const key of tree.keys()) {
+      const cycle = findCycle(key);
+      if (cycle)
+        return cycle;
+    }
+    return undefined;
+  }
+
   private _nodes = new Map<string, Node>();
   private _roots: Node[] = [];
   private _lastCompleteTreeVersion: string = '';
@@ -79,31 +109,13 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
               node.build && node.build.success ? 'ok' : 'fail';
   }
 
-  private _checkNoCycles(tree: Multimap<string, string>) {
-    const stackIndexes = new Map<string, number>();
-    const visited = new Set<string>();
-    const dfs = (nodeId: string, stack: string[] = []) => {
-      const stackIndex = stackIndexes.get(nodeId);
-      if (stackIndex !== undefined)
-        throw new CycleError(stack.slice(stackIndex));
-
-      if (visited.has(nodeId))
-        return;
-      visited.add(nodeId);
-
-      stackIndexes.set(nodeId, stack.push(nodeId) - 1);
-      for (const child of tree.getAll(nodeId))
-        dfs(child, stack);
-      stack.pop();
-      stackIndexes.delete(nodeId);
-    }
-    for (const key of tree.keys())
-      dfs(key);
-  }
-
   resetAllBuilds() {
     for (const node of this._nodes.values())
       this._resetBuild(node);
+  }
+
+  clear() {
+    this.setBuildTree(new Multimap([]));
   }
 
   /**
@@ -113,17 +125,16 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
    * @param tree 
    */
   setBuildTree(tree: Multimap<string, string>) {
-    this._checkNoCycles(tree);
+    const cycle = BuildTree.findDependencyCycle(tree);
+    if (cycle)
+      throw new CycleError(cycle);
 
-    const addedNodes: string[] = [];
-    const removedNodes: string[] = [];
     // Remove nodes that were dropped, cancelling their build in the meantime.
     const nodeIds = new Set([...tree.values(), ...tree.keys()]);
     for (const [nodeId, node] of this._nodes) {
       if (!nodeIds.has(nodeId)) {
         this._resetBuild(node);
         this._nodes.delete(nodeId);
-        removedNodes.push(nodeId);
       }
     }
     this._roots = [];
@@ -138,7 +149,6 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
           generation: 0,
           subtreeSha: '',
         });
-        addedNodes.push(nodeId);
       }
       const node = this._nodes.get(nodeId)!;
       node.children = [];
@@ -176,8 +186,6 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
     
     for (const root of this._roots)
       dfs(root);
-
-    return { addedNodes, removedNodes };
   }
 
   topsort(): string[] {
@@ -208,7 +216,8 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
    */
   markChanged(nodeId: string) {
     const node = this._nodes.get(nodeId);
-    assert(node, `cannot mark changed a node ${nodeId} that does not exist`);
+    if (!node)
+      return;
     const visited = new Set<Node>();
     const dfs = (node: Node) => {
       if (visited.has(node))
