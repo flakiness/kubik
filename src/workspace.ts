@@ -6,6 +6,7 @@ import { BuildOptions, BuildTree } from "./buildTree.js";
 import { AbsolutePath, readConfigTree, toAbsolutePath } from "./configLoader.js";
 import { Multimap } from "./multimap.js";
 import { killProcessTree } from "./process_utils.js";
+import { dbgWatchApp } from "./watchApp.js";
 
 type UpdateData = {
   timeout: NodeJS.Timeout,
@@ -166,12 +167,15 @@ export class Project {
 
   private _onStdOut(text: string) {
     this._output += text;
+    this._workspace.emit('project_stdout', this, text);
+    this._workspace.emit('changed');
   }
 
   private _onStdErr(text: string) {
     this._output += text;
+    this._workspace.emit('project_stderr', this, text);
+    this._workspace.emit('changed');
   }
-
 }
 
 type WorkspaceEvents = {
@@ -214,15 +218,6 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       this.emit('changed');
     });
     this._buildTree.on('node_build_aborted', () => this.emit('changed'));
-
-    this._buildTree.on('node_build_stderr', (nodeId, line) => {
-      this.emit('project_stderr', this._projects.get(nodeId as AbsolutePath)!, line);
-      this.emit('changed');
-    });
-    this._buildTree.on('node_build_stdout', (nodeId, line) => {
-      this.emit('project_stdout', this._projects.get(nodeId as AbsolutePath)!, line);
-      this.emit('changed');
-    });
   }
 
   workspaceError() {
@@ -295,7 +290,9 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
   }
 
   private async _readConfiguration() {
+    let time = Date.now();
     const configs = await readConfigTree(this._roots);
+    dbgWatchApp(`reading configs:`, (Date.now() - time) + 'ms');
     const projectTree = new Multimap<AbsolutePath, AbsolutePath>();
     for (const [key, value] of configs) {
       const children = value.config?.deps ?? [];
@@ -337,6 +334,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
         }));
       }
     }
+
 
     this.emit('changed');
   }

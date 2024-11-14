@@ -57,8 +57,6 @@ type BuildTreeEvents = {
   'node_build_started': [string],
   'node_build_finished': [string],
   'node_build_aborted': [string],
-  'node_build_stdout': [string, string],
-  'node_build_stderr': [string, string],
 }
 
 export class BuildTree extends EventEmitter<BuildTreeEvents> {

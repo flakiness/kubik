@@ -211,6 +211,11 @@ class ProjectView {
   }
 }
 
+let gDebug: ((...msg: string[]) => void)|undefined;
+export function dbgWatchApp(...msg: string[]) {
+  gDebug?.call(null, ...msg);
+}
+
 class Layout {
   private _screen: blessed.Widgets.Screen;
   private _views: ProjectView[] = [];
@@ -218,12 +223,16 @@ class Layout {
   private _projects: Project[] = [];
   private _workspace: Workspace;
 
+  private _renderTimeout?: NodeJS.Timeout;
+
   constructor(workspace: Workspace) {
     this._workspace = workspace;
     this._screen = blessed.screen({
       smartCSR: true,
       terminal: 'tmux-256color',
+      debug: true,
     });
+    gDebug = this._screen.debug.bind(this._screen);
 
     workspace.on('changed', () => this.render());
 
@@ -255,6 +264,13 @@ class Layout {
   }
 
   render() {
+    if (this._renderTimeout)
+      return;
+    this._renderTimeout = setTimeout(this._doRender.bind(this), 0);
+  }
+
+  private _doRender() {
+    this._renderTimeout = undefined;
     const workspaceError = this._workspace.workspaceError();
     if (workspaceError) {
       // Dispose all project views.
