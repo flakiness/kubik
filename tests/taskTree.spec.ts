@@ -1,18 +1,18 @@
 import { expect, test } from '@playwright/test';
-import { BuildOptions, BuildTree, CycleError } from '../src/buildTree.js';
 import { Multimap } from '../src/multimap.js';
+import { CycleError, TaskOptions, TaskTree } from '../src/taskTree.js';
 
 class Logger {
   public log: string[] = [];
 
-  constructor(tree: BuildTree) {
-    tree.on('node_build_started', this._log.bind(this, 'started'));
-    tree.on('node_build_finished', this._log.bind(this, 'finished'));
-    tree.on('node_build_reset', this._log.bind(this, 'reset'));
+  constructor(tree: TaskTree) {
+    tree.on('task_started', this._log.bind(this, 'started'));
+    tree.on('task_finished', this._log.bind(this, 'finished'));
+    tree.on('task_reset', this._log.bind(this, 'reset'));
   }
 
-  private _log(prefix: string, nodeId: string) {
-    this.log.push(`${prefix}: ${nodeId}`);
+  private _log(prefix: string, taskId: string) {
+    this.log.push(`${prefix}: ${taskId}`);
   }
 
   reset() {
@@ -26,62 +26,62 @@ class Logger {
   }
 }
 
-async function asyncBuild(options: BuildOptions) {
+async function asyncBuild(options: TaskOptions) {
   await Promise.resolve();
   options.onComplete(true);
 }
 
-async function onCompleted(tree: BuildTree, nodeIds?: string[]) {
-  if (!nodeIds) {
+async function onCompleted(tree: TaskTree, taskIds?: string[]) {
+  if (!taskIds) {
     await new Promise<void>(x => tree.once('completed', x));
     return;
   }
-  const pending = new Set(nodeIds);
+  const pending = new Set(taskIds);
   await new Promise<void>(resolve => {
-    const listener = (nodeId: string) => {
-      pending.delete(nodeId);
+    const listener = (taskId: string) => {
+      pending.delete(taskId);
       if (!pending.size) {
-        tree.off('node_build_finished', listener);
+        tree.off('task_finished', listener);
         resolve();
       }
     }
-    tree.on('node_build_finished', listener);
+    tree.on('task_finished', listener);
   });
 }
 
-async function onStarted(tree: BuildTree, nodeIds: string[]) {
-  const pending = new Set(nodeIds);
+async function onStarted(tree: TaskTree, taskIds: string[]) {
+  const pending = new Set(taskIds);
   await new Promise<void>(resolve => {
-    const listener = (nodeId: string) => {
-      pending.delete(nodeId);
+    const listener = (taskId: string) => {
+      pending.delete(taskId);
       if (!pending.size) {
-        tree.off('node_build_started', listener);
+        tree.off('task_started', listener);
         resolve();
       }
     }  
-    tree.on('node_build_started', listener);
+    tree.on('task_started', listener);
   });
 }
 
-async function onAborted(tree: BuildTree, nodeIds: string[]) {
-  const pending = new Set(nodeIds);
+async function onAborted(tree: TaskTree, taskIds: string[]) {
+  const pending = new Set(taskIds);
   await new Promise<void>(resolve => {
-    const listener = (nodeId: string) => {
-      pending.delete(nodeId);
+    const listener = (taskId: string) => {
+      pending.delete(taskId);
       if (!pending.size) {
-        tree.off('node_build_reset', listener);
+        tree.off('task_reset', listener);
         resolve();
       }
     }  
-    tree.on('node_build_reset', listener);
+    tree.on('task_reset', listener);
   });
 }
 
 test('should build simple dependency', async () => {
-  const tree = new BuildTree({ buildCallback: asyncBuild, jobs: Infinity });
+  const tree = new TaskTree({ runCallback: asyncBuild, jobs: Infinity });
   const logger = new Logger(tree);
 
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+  tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['middle'],
     'middle': ['leaf'],
     'leaf': [],
@@ -113,10 +113,10 @@ test('should build simple dependency', async () => {
 });
 
 test('make sure that when tree partially changes, only changed parts are re-built', async () => {
-  const tree = new BuildTree({ buildCallback: asyncBuild, jobs: Infinity });
+  const tree = new TaskTree({ runCallback: asyncBuild, jobs: Infinity });
   const logger = new Logger(tree);
 
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+  tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-1', 'dep-2'],
     'dep-1': [],
     'dep-2': [],
@@ -133,7 +133,7 @@ test('make sure that when tree partially changes, only changed parts are re-buil
     'finished: root',
   ]);
 
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+  tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-1'],
     'dep-1': [],
   })));
@@ -148,15 +148,15 @@ test('make sure that when tree partially changes, only changed parts are re-buil
   ]);
 });
 
-test('that pending build is stopped if the node was dropped during change.', async () => {
-  const tree = new BuildTree({ buildCallback: async opt => {
+test('that pending build is stopped if the task was dropped during change.', async () => {
+  const tree = new TaskTree({ runCallback: async opt => {
     await Promise.resolve();
-    if (opt.nodeId === 'root' || opt.nodeId === 'dep-1')
+    if (opt.taskId === 'root' || opt.taskId === 'dep-1')
       opt.onComplete(true);
   }, jobs: Infinity });
   const logger = new Logger(tree);
 
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+  tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-1', 'dep-2'],
   })));
   tree.build();
@@ -168,7 +168,7 @@ test('that pending build is stopped if the node was dropped during change.', asy
     'finished: dep-1',
   ]);
 
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+  tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-1'],
   })));
   tree.build();
@@ -180,15 +180,15 @@ test('that pending build is stopped if the node was dropped during change.', asy
   ]);
 });
 
-test('that pending build is stopped if the node deps changed.', async () => {
-  const tree = new BuildTree({ buildCallback: async opt => {
+test('that pending build is stopped if the task deps changed.', async () => {
+  const tree = new TaskTree({ runCallback: async opt => {
     await Promise.resolve();
-    if (opt.nodeId.startsWith('dep-'))
+    if (opt.taskId.startsWith('dep-'))
       opt.onComplete(true);
   }, jobs: Infinity });
   const logger = new Logger(tree);
 
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+  tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-1'],
   })));
   tree.build();
@@ -200,7 +200,7 @@ test('that pending build is stopped if the node deps changed.', async () => {
     'started: root',
   ]);
 
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+  tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-2'],
   })));
   tree.build();
@@ -214,15 +214,15 @@ test('that pending build is stopped if the node deps changed.', async () => {
   ]);
 });
 
-test('test that pending build is stopped if the node inputs are changed', async () => {
-  const tree = new BuildTree({ buildCallback: async opt => {
+test('test that pending build is stopped if the task inputs are changed', async () => {
+  const tree = new TaskTree({ runCallback: async opt => {
     await Promise.resolve();
-    if (opt.nodeId === 'dep')
+    if (opt.taskId === 'dep')
       opt.onComplete(true);
   }, jobs: Infinity });
   const logger = new Logger(tree);
 
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+  tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep'],
   })));
   tree.build();
@@ -248,10 +248,10 @@ test('test that pending build is stopped if the node inputs are changed', async 
 });
 
 test('tests parallel compilation', async () => {
-  const tree = new BuildTree({ buildCallback: asyncBuild, jobs: Infinity });
+  const tree = new TaskTree({ runCallback: asyncBuild, jobs: Infinity });
   const logger = new Logger(tree);
 
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+  tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-1', 'dep-2'],
   })));
   tree.build();
@@ -268,10 +268,10 @@ test('tests parallel compilation', async () => {
 });
 
 test('tests sequential compilation', async () => {
-  const tree = new BuildTree({ buildCallback: asyncBuild, jobs: 1 });
+  const tree = new TaskTree({ runCallback: asyncBuild, jobs: 1 });
   const logger = new Logger(tree);
 
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+  tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-1', 'dep-2'],
   })));
   tree.build();
@@ -288,10 +288,10 @@ test('tests sequential compilation', async () => {
 });
 
 test('tests jobs = 2', async () => {
-  const tree = new BuildTree({ buildCallback: asyncBuild, jobs: 2 });
+  const tree = new TaskTree({ runCallback: asyncBuild, jobs: 2 });
   const logger = new Logger(tree);
 
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+  tree.setTasks(Multimap.fromEntries(Object.entries({
     'leaf-1': [],
     'leaf-2': [],
     'leaf-3': [],
@@ -310,10 +310,10 @@ test('tests jobs = 2', async () => {
 });
 
 test('test multiple roots with single deps', async () => {
-  const tree = new BuildTree({ buildCallback: asyncBuild, jobs: Infinity });
+  const tree = new TaskTree({ runCallback: asyncBuild, jobs: Infinity });
   const logger = new Logger(tree);
 
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+  tree.setTasks(Multimap.fromEntries(Object.entries({
     'root-1': ['dep'],
     'root-2': ['dep'],
   })));
@@ -347,55 +347,55 @@ test('test multiple roots with single deps', async () => {
 });
 
 test('test deps cycle detection', async () => {
-  const tree = new BuildTree({ buildCallback: asyncBuild, jobs: Infinity });
-  expect(() => tree.setBuildTree(Multimap.fromEntries(Object.entries({
-    'node-0': ['node-1'],
-    'node-1': ['node-2'],
-    'node-2': ['node-3'],
-    'node-3': ['node-1'],
+  const tree = new TaskTree({ runCallback: asyncBuild, jobs: Infinity });
+  expect(() => tree.setTasks(Multimap.fromEntries(Object.entries({
+    'task-0': ['task-1'],
+    'task-1': ['task-2'],
+    'task-2': ['task-3'],
+    'task-3': ['task-1'],
   })))).toThrowError(CycleError);
 });
 
 test('no roots are throws as dependency cycle error', async () => {
-  const tree = new BuildTree({ buildCallback: asyncBuild, jobs: Infinity });
-  expect(() => tree.setBuildTree(Multimap.fromEntries(Object.entries({
-    'node-1': ['node-2'],
-    'node-2': ['node-3'],
-    'node-3': ['node-1'],
+  const tree = new TaskTree({ runCallback: asyncBuild, jobs: Infinity });
+  expect(() => tree.setTasks(Multimap.fromEntries(Object.entries({
+    'task-1': ['task-2'],
+    'task-2': ['task-3'],
+    'task-3': ['task-1'],
   })))).toThrowError(CycleError);
 });
 
 test('empty tree should not throw any errors', async () => {
-  const tree = new BuildTree({ buildCallback: () => {}, jobs: Infinity });
+  const tree = new TaskTree({ runCallback: () => {}, jobs: Infinity });
   const logger = new Logger(tree);
 
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
-    'node-1': [],
-    'node-2': [],
+  tree.setTasks(Multimap.fromEntries(Object.entries({
+    'task-1': [],
+    'task-2': [],
   })));
   tree.build();
-  await onStarted(tree, ['node-1', 'node-2']);
+  await onStarted(tree, ['task-1', 'task-2']);
   expect(logger.pull()).toEqual([
-    'started: node-1',
-    'started: node-2',
+    'started: task-1',
+    'started: task-2',
   ]);
 
-  tree.setBuildTree(new Multimap());
+  tree.setTasks(new Multimap());
   expect(logger.pull()).toEqual([
-    'reset: node-1',
-    'reset: node-2',
+    'reset: task-1',
+    'reset: task-2',
   ]);
 });
 
-test('make sure that node build is reset when deps are changed', async () => {
-  const tree = new BuildTree({ buildCallback: async opt => {
+test('make sure that task build is reset when deps are changed', async () => {
+  const tree = new TaskTree({ runCallback: async opt => {
     await Promise.resolve();
-    if (opt.nodeId === 'dep-1')
+    if (opt.taskId === 'dep-1')
       opt.onComplete(true);
   }, jobs: Infinity });
   const logger = new Logger(tree);
 
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+  tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-1'],
   })));
   tree.build();
@@ -406,21 +406,21 @@ test('make sure that node build is reset when deps are changed', async () => {
     'finished: dep-1',
     'started: root',
   ]);
-  expect(tree.nodeBuildStatus('root')).toBe('running');
+  expect(tree.taskStatus('root')).toBe('running');
 
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+  tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-2'],
   })));
   expect(logger.pull()).toEqual([
     'reset: dep-1',
     'reset: root',
   ]);
-  expect(tree.nodeBuildStatus('root')).toBe('pending');
+  expect(tree.taskStatus('root')).toBe('pending');
 });
 
 test('check build order', async () => {
-  const tree = new BuildTree({ buildCallback: asyncBuild, jobs: Infinity });
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+  const tree = new TaskTree({ runCallback: asyncBuild, jobs: Infinity });
+  tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-1', 'dep-2'],
     'dep-1': ['leaf-1', 'leaf-2', 'leaf-3'],
   })));
@@ -435,9 +435,9 @@ test('check build order', async () => {
 });
 
 test('should abort only once', async () => {
-  const tree = new BuildTree({ buildCallback: () => {}, jobs: Infinity });
+  const tree = new TaskTree({ runCallback: () => {}, jobs: Infinity });
   const logger = new Logger(tree);
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+  tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': [],
   })));
   tree.build();
@@ -446,8 +446,8 @@ test('should abort only once', async () => {
     'started: root',
   ]);
 
-  tree.resetAllBuilds();
-  tree.resetAllBuilds();
+  tree.resetAllTasks();
+  tree.resetAllTasks();
   expect(logger.pull()).toEqual([
     'reset: root',
   ]);
@@ -456,7 +456,7 @@ test('should abort only once', async () => {
 test('cannot report status twice', async () => {
   let resolve: () => void;
   const promise = new Promise<void>(x => resolve = x);
-  const tree = new BuildTree({ buildCallback: async (options) => {
+  const tree = new TaskTree({ runCallback: async (options) => {
     await Promise.resolve();
     options.onComplete(true);
     await Promise.resolve();
@@ -464,7 +464,7 @@ test('cannot report status twice', async () => {
     resolve();
   }, jobs: Infinity });
   const logger = new Logger(tree);
-  tree.setBuildTree(Multimap.fromEntries(Object.entries({
+  tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': [],
   })));
   tree.build();
@@ -473,5 +473,5 @@ test('cannot report status twice', async () => {
     'started: root',
     'finished: root',
   ]);
-  expect(tree.nodeBuildStatus('root')).toBe('ok');
+  expect(tree.taskStatus('root')).toBe('ok');
 });

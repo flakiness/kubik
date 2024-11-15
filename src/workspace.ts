@@ -2,10 +2,10 @@ import { ChildProcess, fork } from "child_process";
 import chokidar, { FSWatcher } from "chokidar";
 import EventEmitter from "events";
 import path from "path";
-import { BuildOptions, BuildTree } from "./buildTree.js";
 import { AbsolutePath, ReadConfigResult, readConfigTree, toAbsolutePath } from "./configLoader.js";
 import { Multimap } from "./multimap.js";
 import { killProcessTree } from "./process_utils.js";
+import { TaskOptions, TaskTree } from "./taskTree.js";
 import { dbgWatchApp } from "./watchApp.js";
 
 type UpdateData = {
@@ -15,8 +15,8 @@ type UpdateData = {
 }
 
 function renderCycleError(cycle: string[]) {
-  const cycleMessage = cycle.map((nodeId, index): string => {
-    const name = path.relative(process.cwd(), nodeId);
+  const cycleMessage = cycle.map((taskId, index): string => {
+    const name = path.relative(process.cwd(), taskId);
     return (index === 0) ?
       '┌─▶' + name :
       '│' + ' '.repeat(2 + 3 * (index - 1)) + '└─▶' + name;
@@ -35,7 +35,7 @@ export const NOTIFY_STARTED_MESSAGE = 'service started';
 export class Project {
   private _workspace: Workspace;
   private _configPath: AbsolutePath;
-  private _buildTree: BuildTree;
+  private _taskTree: TaskTree;
 
   private _fsWatch?: FSWatcher;
   
@@ -47,9 +47,9 @@ export class Project {
   private _stopTimestampMs: number = Date.now();
   private _subprocess?: ChildProcess;
 
-  constructor(workspace: Workspace, buildTree: BuildTree, configPath: AbsolutePath) {
+  constructor(workspace: Workspace, taskTree: TaskTree, configPath: AbsolutePath) {
     this._workspace = workspace;
-    this._buildTree = buildTree;
+    this._taskTree = taskTree;
     this._configPath = configPath;
   }
 
@@ -108,14 +108,14 @@ export class Project {
   }
 
   status() {
-    return this._buildTree.nodeBuildStatus(this._configPath);
+    return this._taskTree.taskStatus(this._configPath);
   }
 
   output() {
     return this._output;
   }
 
-  requestBuild(options: BuildOptions) {
+  requestBuild(options: TaskOptions) {
     // Fail build right away if there's some configuration error.
     if (this._configurationError) {
       this._startTimestampMs = Date.now();
@@ -216,7 +216,7 @@ type WorkspaceEvents = {
 }
 
 export class Workspace extends EventEmitter<WorkspaceEvents> {
-  private _buildTree: BuildTree;
+  private _taskTree: TaskTree;
   private _projects = new Map<AbsolutePath, Project>();
 
   private _updateData?: UpdateData;
@@ -229,23 +229,23 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
   constructor(options: WorkspaceOptions) {
     super();
     this._watchMode = options.watchMode;
-    this._buildTree = new BuildTree({
-      buildCallback: (options) => {
-        const project = this._projects.get(options.nodeId as AbsolutePath);
+    this._taskTree = new TaskTree({
+      runCallback: (options) => {
+        const project = this._projects.get(options.taskId as AbsolutePath);
         project?.requestBuild(options);    
       },
       jobs: options.jobs,
     });
     
-    this._buildTree.on('node_build_started', (nodeId) => {
-      this.emit('project_started', this._projects.get(nodeId as AbsolutePath)!);
+    this._taskTree.on('task_started', (taskId) => {
+      this.emit('project_started', this._projects.get(taskId as AbsolutePath)!);
       this.emit('changed');
     });
-    this._buildTree.on('node_build_finished', (nodeId) => {
-      this.emit('project_finished', this._projects.get(nodeId as AbsolutePath)!)
+    this._taskTree.on('task_finished', (taskId) => {
+      this.emit('project_finished', this._projects.get(taskId as AbsolutePath)!)
       this.emit('changed');
     });
-    this._buildTree.on('node_build_reset', () => this.emit('changed'));
+    this._taskTree.on('task_reset', () => this.emit('changed'));
   }
 
   workspaceError() {
@@ -253,8 +253,8 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
   }
 
   projects(): Project[] {
-    const nodeIds = this._buildTree.topsort();
-    return nodeIds.map(nodeId => this._projects.get(nodeId as AbsolutePath)!);
+    const taskIds = this._taskTree.topsort();
+    return taskIds.map(taskId => this._projects.get(taskId as AbsolutePath)!);
   }
 
   setRoots(roots: AbsolutePath[]) {
@@ -281,7 +281,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
   async stop() {
     clearTimeout(this._updateData?.timeout);
     this._watchMode = false;
-    this._buildTree.resetAllBuilds();
+    this._taskTree.resetAllTasks();
     for (const project of this._projects.values())
       project.dispose();
   }
@@ -300,7 +300,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
 
     // First, propogate changes to the build tree.
     for (const changedProject of changedProjects)
-      this._buildTree.markChanged(changedProject.configPath());  
+      this._taskTree.markChanged(changedProject.configPath());  
 
     // Next, if some of the configuration files changed, than we have to re-read the configs
     // and update the build tree.
@@ -313,7 +313,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       this._updateData.timeout = setTimeout(this._doUpdate.bind(this), 150);
     } else {
       this._updateData = undefined;
-      this._buildTree.build();
+      this._taskTree.build();
     }
   }
 
@@ -327,15 +327,15 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       projectTree.setAll(key, children);
     }
 
-    const cycle = BuildTree.findDependencyCycle(projectTree);
+    const cycle = TaskTree.findDependencyCycle(projectTree);
     if (cycle) {
       this._workspaceError = renderCycleError(cycle);
-      this._buildTree.clear();
+      this._taskTree.clear();
       this.emit('workspace_error', this._workspaceError);
       this.emit('changed');
     } else {
       this._workspaceError = undefined;
-      this._buildTree.setBuildTree(projectTree);
+      this._taskTree.setTasks(projectTree);
     }
 
     // Delete all projects that were removed.
@@ -350,7 +350,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     for (const config of configs.values()) {
       let project = this._projects.get(config.configPath);
       if (!project) {
-        project = new Project(this, this._buildTree, config.configPath);
+        project = new Project(this, this._taskTree, config.configPath);
         this._projects.set(config.configPath, project);
       }
       project.setConfiguration(config);
