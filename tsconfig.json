@@ -1,5 +1,5 @@
 {
-  "include": ["src", "tests"],
+  "include": ["src", "tests", "build.mjs"],
   "exclude": ["lib"],
   "compilerOptions": {
     "emitDeclarationOnly": true,

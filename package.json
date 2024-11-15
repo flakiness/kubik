@@ -19,7 +19,7 @@
   },
   "exports": {
     ".": {
-      "types": "./types/import.d.ts",
+      "types": "./types/src/import.d.ts",
       "import": "./lib/import.js",
       "require": "./lib/import.js"
     }
