@@ -140,10 +140,14 @@ export class Project {
         },
         detached: true,
       });
-      options.signal.addEventListener('abort', () => this._killProcess());
+      options.signal.addEventListener('abort', () => {
+        if (this._subprocess)
+          this._onStdOut(`(process terminated by Kubik)`);
+        this._killProcess();
+      });
       this._subprocess.stdout?.on('data', data => this._onStdOut(data.toString('utf8')));
       this._subprocess.stderr?.on('data', data => this._onStdErr(data.toString('utf8')));
-      
+
       this._subprocess.on('message', msg => {
         if (msg !== NOTIFY_STARTED_MESSAGE)
           return;
@@ -241,7 +245,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       this.emit('project_finished', this._projects.get(nodeId as AbsolutePath)!)
       this.emit('changed');
     });
-    this._buildTree.on('node_build_aborted', () => this.emit('changed'));
+    this._buildTree.on('node_build_reset', () => this.emit('changed'));
   }
 
   workspaceError() {

@@ -6,7 +6,7 @@ import fs from 'fs';
 import { Task } from 'kubik';
 
 const { __dirname, $ } = Task.init(import.meta, {
-  name: 'build & lint',
+  name: 'kubik',
   watch: [ '../src', '../package.json' ],
 });
 

@@ -56,7 +56,7 @@ type BuildTreeEvents = {
   'completed': [],
   'node_build_started': [string],
   'node_build_finished': [string],
-  'node_build_aborted': [string],
+  'node_build_reset': [string],
 }
 
 export class BuildTree extends EventEmitter<BuildTreeEvents> {
@@ -287,11 +287,8 @@ export class BuildTree extends EventEmitter<BuildTreeEvents> {
       return;
     const build = node.build;
     node.build = undefined;
-    // Make sure to emit event as the very last thing.
-    if (build.success === undefined) {
-      build.abortController.abort();
-      this.emit('node_build_aborted', node.nodeId);
-    }
+    build.abortController.abort();
+    this.emit('node_build_reset', node.nodeId);
   }
 
   private _onBuildComplete(node: Node, buildVersion: string, success: boolean) {

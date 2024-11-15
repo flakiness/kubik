@@ -8,7 +8,7 @@ class Logger {
   constructor(tree: BuildTree) {
     tree.on('node_build_started', this._log.bind(this, 'started'));
     tree.on('node_build_finished', this._log.bind(this, 'finished'));
-    tree.on('node_build_aborted', this._log.bind(this, 'aborted'));
+    tree.on('node_build_reset', this._log.bind(this, 'reset'));
   }
 
   private _log(prefix: string, nodeId: string) {
@@ -44,7 +44,7 @@ async function onCompleted(tree: BuildTree, nodeIds?: string[]) {
         tree.off('node_build_finished', listener);
         resolve();
       }
-    }  
+    }
     tree.on('node_build_finished', listener);
   });
 }
@@ -69,11 +69,11 @@ async function onAborted(tree: BuildTree, nodeIds: string[]) {
     const listener = (nodeId: string) => {
       pending.delete(nodeId);
       if (!pending.size) {
-        tree.off('node_build_aborted', listener);
+        tree.off('node_build_reset', listener);
         resolve();
       }
     }  
-    tree.on('node_build_aborted', listener);
+    tree.on('node_build_reset', listener);
   });
 }
 
@@ -103,6 +103,8 @@ test('should build simple dependency', async () => {
 
   await onCompleted(tree);
   expect(logger.log).toEqual([
+    'reset: middle',
+    'reset: root',
     'started: middle',
     'finished: middle',
     'started: root',
@@ -139,6 +141,8 @@ test('make sure that when tree partially changes, only changed parts are re-buil
 
   await onCompleted(tree);
   expect(logger.pull()).toEqual([
+    'reset: dep-2',
+    'reset: root',
     'started: root',
     'finished: root',
   ]);
@@ -170,7 +174,7 @@ test('that pending build is stopped if the node was dropped during change.', asy
   tree.build();
   await onCompleted(tree);
   expect(logger.pull()).toEqual([
-    'aborted: dep-2', // <-- this is the pending build that was aborted due to setBuildTree operation.
+    'reset: dep-2', // <-- this is the pending build that was aborted due to setBuildTree operation.
     'started: root',
     'finished: root',
   ]);
@@ -202,7 +206,8 @@ test('that pending build is stopped if the node deps changed.', async () => {
   tree.build();
   await onStarted(tree, ['root']);
   expect(logger.pull()).toEqual([
-    'aborted: root', // <-- this is the pending build that was aborted due to setBuildTree operation.
+    'reset: dep-1',
+    'reset: root', // <-- this is the pending build that was aborted due to setBuildTree operation.
     'started: dep-2',
     'finished: dep-2',
     'started: root',
@@ -234,7 +239,8 @@ test('test that pending build is stopped if the node inputs are changed', async 
   await onStarted(tree, ['root']);
 
   expect(logger.pull()).toEqual([
-    'aborted: root', // <-- the root building was aborted since markChanged was called.
+    'reset: dep', // <-- this was reset since it was changed
+    'reset: root', // <-- the root building was aborted since markChanged was called.
     'started: dep',
     'finished: dep',
     'started: root',
@@ -328,6 +334,9 @@ test('test multiple roots with single deps', async () => {
   tree.build();
   await onCompleted(tree);
   expect(logger.pull()).toEqual([
+    'reset: dep',
+    'reset: root-1',
+    'reset: root-2',
     'started: dep',
     'finished: dep',
     'started: root-1',
@@ -373,8 +382,8 @@ test('empty tree should not throw any errors', async () => {
 
   tree.setBuildTree(new Multimap());
   expect(logger.pull()).toEqual([
-    'aborted: node-1',
-    'aborted: node-2',
+    'reset: node-1',
+    'reset: node-2',
   ]);
 });
 
@@ -402,6 +411,10 @@ test('make sure that node build is reset when deps are changed', async () => {
   tree.setBuildTree(Multimap.fromEntries(Object.entries({
     'root': ['dep-2'],
   })));
+  expect(logger.pull()).toEqual([
+    'reset: dep-1',
+    'reset: root',
+  ]);
   expect(tree.nodeBuildStatus('root')).toBe('pending');
 });
 
@@ -436,7 +449,7 @@ test('should abort only once', async () => {
   tree.resetAllBuilds();
   tree.resetAllBuilds();
   expect(logger.pull()).toEqual([
-    'aborted: root',
+    'reset: root',
   ]);
 });
 
