@@ -7,7 +7,7 @@ import { Task } from 'kubik';
 
 const { __dirname, $ } = Task.init(import.meta, {
   name: 'kubik',
-  watch: [ '../src', '../package.json' ],
+  watch: [ '../src', '../package.json', '../tsconfig.json' ],
 });
 
 const outDir = path.join(import.meta.dirname, '..', 'lib');

@@ -303,7 +303,7 @@ class Layout {
     this._errorView?.dispose();
     this._errorView = undefined;
 
-    this._projects = this._workspace.projects();
+    this._projects = this._workspace.topsortProjects();
     // Make sure we have enough views to cover the projects and associate them.
     while (this._views.length > this._projects.length)
       this._views.pop()?.dispose();

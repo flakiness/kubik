@@ -26,8 +26,8 @@ function renderCycleError(cycle: string[]) {
 }
 
 export type WorkspaceOptions = {
-  roots: AbsolutePath[],
-  nodeOptions: NodeForkOptions,
+  roots: string[],
+  nodeOptions?: NodeForkOptions,
   watchMode: boolean,
   jobs: number,
 };
@@ -49,14 +49,14 @@ export class Project {
   private _customName?: string;
   private _configurationError?: any;
 
-  private _nodeForkOptions: NodeForkOptions;
+  private _nodeForkOptions?: NodeForkOptions;
 
   private _output: string = '';
   private _startTimestampMs: number = Date.now();
   private _stopTimestampMs?: number = Date.now();
   private _subprocess?: ChildProcess;
 
-  constructor(workspace: Workspace, taskTree: TaskTree<AbsolutePath>, configPath: AbsolutePath, nodeForkOptions: NodeForkOptions) {
+  constructor(workspace: Workspace, taskTree: TaskTree<AbsolutePath>, configPath: AbsolutePath, nodeForkOptions?: NodeForkOptions) {
     this._workspace = workspace;
     this._taskTree = taskTree;
     this._configPath = configPath;
@@ -122,7 +122,7 @@ export class Project {
   }
 
   output() {
-    return this._output;
+    return this._configurationError ?? this._output;
   }
 
   requestBuild(options: TaskOptions<AbsolutePath>) {
@@ -144,14 +144,14 @@ export class Project {
       const execArgv: string[] = [
         '--enable-source-maps',
       ];
-      if (this._nodeForkOptions.envFile)
+      if (this._nodeForkOptions?.envFile)
         execArgv.push(`--env-file=${this._nodeForkOptions.envFile}`);
       const env: Record<string, string|undefined> = {
         ...process.env,
         KUBIK_WATCH_MODE: this._fsWatch ? '1' : undefined,
         KUBIK_RUNNER: '1',
       };
-      if (this._nodeForkOptions.forceColors)
+      if (this._nodeForkOptions?.forceColors)
         env.FORCE_COLOR = '1';
       this._subprocess = fork(this._configPath, {
         cwd: path.dirname(this._configPath),
@@ -271,7 +271,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     return this._workspaceError;
   }
 
-  projects(): Project[] {
+  topsortProjects(): Project[] {
     const taskIds = this._taskTree.topsort();
     return taskIds.map(taskId => this._projects.get(taskId)!);
   }
@@ -332,7 +332,8 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
 
   private async _readConfiguration() {
     let time = Date.now();
-    const configs = await readConfigTree(this._options.roots);
+    const roots = this._options.roots.map(root => path.resolve(process.cwd(), root) as AbsolutePath);
+    const configs = await readConfigTree(roots);
     dbgWatchApp(`reading configs:`, (Date.now() - time) + 'ms');
     const projectTree = new Multimap<AbsolutePath, AbsolutePath>();
     for (const [key, value] of configs) {

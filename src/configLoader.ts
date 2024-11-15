@@ -1,3 +1,4 @@
+import { existsSync } from "fs";
 import path from "path";
 import { TaskOptions } from "./import.js";
 import { spawnAsync } from "./process_utils.js";
@@ -42,6 +43,9 @@ export async function readConfigTree(roots: AbsolutePath[]): Promise<Map<Absolut
 }
 
 async function readSingleConfig(configPath: AbsolutePath): Promise<ReadConfigResult> {
+  if (!existsSync(configPath)) {
+    return { configPath, error: `Failed to load configuration - path ${path.relative(process.cwd(), configPath)} does not exist`};
+  }
   // We have to load config in a sub-process to bust require cache.
   const { code, stdout } = await spawnAsync(process.execPath, [configPath], {
     env: {
