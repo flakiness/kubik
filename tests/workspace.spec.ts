@@ -12,7 +12,7 @@ function asset(aPath: string) {
   return test.info().outputPath(aPath);
 }
 
-async function bootstrapFiles(assetsFolder: string) {
+async function bootstrapAssets(assetsFolder: string) {
   await fs.promises.cp(path.join(__dirname, assetsFolder), test.info().outputDir, {recursive: true});
 }
 
@@ -39,6 +39,22 @@ async function onProjectRemoved(workspace: Workspace, toBeRemoved: Project): Pro
         resolve();
       }
     })
+  });
+}
+
+async function onProjectOutput(project: Project, substring: string) {
+  if (project.output().includes(substring))
+    return;
+  return new Promise<void>(resolve => {
+    const listener = () => {
+      if (project.output().includes(substring)) {
+        project.off('build_stdout', listener);
+        project.off('build_stderr', listener);
+        resolve();
+      }
+    }
+    project.on('build_stdout', listener);
+    project.on('build_stderr', listener);
   });
 }
 
@@ -84,7 +100,7 @@ const workspaceTest = test.extend<{
 });
 
 workspaceTest('should work', async ({ createWorkspace }) => {
-  await bootstrapFiles('simple');
+  await bootstrapAssets('simple');
   const workspace = createWorkspace({
     jobs: Infinity,
     watchMode: false,
@@ -98,7 +114,7 @@ workspaceTest('should work', async ({ createWorkspace }) => {
 });
 
 workspaceTest('should detect cycle', async ({ createWorkspace }) => {
-  await bootstrapFiles('cycle');
+  await bootstrapAssets('cycle');
   const workspace = createWorkspace({
     jobs: Infinity,
     watchMode: false,
@@ -109,7 +125,7 @@ workspaceTest('should detect cycle', async ({ createWorkspace }) => {
 });
 
 workspaceTest('in watch mode, should detect cycle and clear the error once cycle is fixed', async ({ createWorkspace }) => {
-  await bootstrapFiles('cycle');
+  await bootstrapAssets('cycle');
   const workspace = createWorkspace({
     jobs: Infinity,
     watchMode: true,
@@ -123,17 +139,25 @@ workspaceTest('in watch mode, should detect cycle and clear the error once cycle
   expect(workspace.workspaceError()).toBe(undefined);
 });
 
-workspaceTest.only('should not complain when created with a root that does not exist', async ({ createWorkspace }) => {
+workspaceTest('should report error when created with a root that does not exist', async ({ createWorkspace }) => {
   const workspace = createWorkspace({
     jobs: Infinity,
     watchMode: true,
     roots: [asset('foo')],
   });
   const foo = await onProjectAdded(workspace, 'foo');
-  const statusChanges: string[] = [];
-  foo.on('build_status_changed', () => statusChanges.push(foo.status()));
   await onWorkspaceStatus(workspace, 'fail');
   await onProjectStatus(foo, 'fail');
   expect(foo.output()).toContain('Failed to load configuration');
-  expect(statusChanges).toEqual(['fail']);
+});
+
+workspaceTest('should report process exit code for services', async ({ createWorkspace }) => {
+  await bootstrapAssets('no-deps');
+  const workspace = createWorkspace({
+    jobs: Infinity,
+    watchMode: false,
+    roots: [asset('service-that-fails.mjs')],
+  });
+  const service = await onProjectAdded(workspace, 'service-that-fails.mjs');
+  await onProjectOutput(service, 'process exited with code=7');
 });

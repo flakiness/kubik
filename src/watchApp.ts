@@ -44,76 +44,17 @@ function renderProjectTitle(project: Project, isFocused: boolean = false) {
   return left + fillStyle(filler.repeat(fillLeftLength)) + middle + fillStyle(filler.repeat(fillRightLength)) + right;
 }
 
-class ErrorView {
-  private _screen: blessed.Widgets.Screen;
-  private _contentBox: blessed.Widgets.BoxElement;
-
-  constructor(screen: blessed.Widgets.Screen) {
-    this._screen = screen;
-    this._contentBox = blessed.box({
-      top: 0,
-      left: 0,
-      width: '100%',
-      height: '100%',
-      content: '',
-      scrollbar: {
-        ch: ' ',
-        style: {
-          bg: 'white',
-        },
-        track: {
-          bg: 'grey',
-        }
-      },
-      keys: true, // Enable keyboard navigation
-      vi: true, // Use vi-style keys for navigation
-      mouse: true, // Enable mouse support for scrolling
-      _border: {
-        type: 'line',
-        left: true,
-        top: false,
-        right: false,
-        bottom: false
-      },
-      scrollable: true,
-      alwaysScroll: true,
-      tags: false,
-      _style: {
-        _focus: {
-          _border: {
-            fg: 'yellow',
-            type: 'line'
-          },
-        },
-      },
-    });
-    screen.append(this._contentBox);
-  }
-
-  setMessage(text: string) {
-    this._contentBox.setContent(text);
-  }
-
-  focus() {
-    this._contentBox.focus();
-  }
-
-  dispose() {
-    this._screen.remove(this._contentBox);
-  }
-}
-
 class ProjectView {
-  private _screen: blessed.Widgets.Screen;
+  private _parent: blessed.Widgets.BoxElement;
   private _titleBox: blessed.Widgets.BoxElement;
   private _contentBox: blessed.Widgets.BoxElement;
   private _height = 0;
   private _project: Project;
   private _layout: Layout;
 
-  constructor(layout: Layout, screen: blessed.Widgets.Screen, project: Project) {
+  constructor(layout: Layout, parent: blessed.Widgets.BoxElement, project: Project) {
     this._layout = layout;
-    this._screen = screen;
+    this._parent = parent;
     this._project = project;
     this._titleBox = blessed.box({
       top: 0,
@@ -123,6 +64,7 @@ class ProjectView {
       tags: false,
       focusable: true,
     });
+
     this._contentBox = blessed.box({
       top: 0,
       left: 0,
@@ -160,8 +102,9 @@ class ProjectView {
         },
       },
     });
-    screen.append(this._titleBox);
-    screen.append(this._contentBox);
+
+    parent.append(this._titleBox);
+    parent.append(this._contentBox);
 
     project.on('build_status_changed', this._onStatusChanged.bind(this));
     project.on('build_stdout', this._onStdIO.bind(this));
@@ -223,12 +166,12 @@ class ProjectView {
   }
 
   isFocused() {
-    return this._screen.focused === this._contentBox;
+    return this._layout.screen().focused === this._contentBox;
   }
 
   dispose() {
-    this._screen.remove(this._contentBox);
-    this._screen.remove(this._titleBox);
+    this._contentBox.detach();
+    this._titleBox.detach();
   }
 }
 
@@ -240,8 +183,9 @@ export function dbgWatchApp(...msg: string[]) {
 class Layout {
   private _screen: blessed.Widgets.Screen;
   private _projectToView = new Map<Project, ProjectView>();
-  private _errorView?: ErrorView;
+  private _errorView: blessed.Widgets.BoxElement;
   private _workspace: Workspace;
+  private _projectsContainer: blessed.Widgets.BoxElement; 
 
   private _renderTimeout?: NodeJS.Timeout;
 
@@ -252,18 +196,56 @@ class Layout {
       terminal: 'tmux-256color',
       debug: true,
     });
+    this._projectsContainer = blessed.box({
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+    });
+    this._screen.append(this._projectsContainer);
+    this._errorView = blessed.box({
+      top: '25%',
+      left: '25%',
+      width: '50%',
+      height: '50%',
+      content: '',
+      border: {
+        type: 'line',
+      },
+      scrollbar: {
+        ch: ' ',
+        style: {
+          bg: 'white',
+        },
+        track: {
+          bg: 'grey',
+        }
+      },
+      keys: true, // Enable keyboard navigation
+      vi: true, // Use vi-style keys for navigation
+      mouse: true, // Enable mouse support for scrolling
+      scrollable: true,
+      alwaysScroll: true,
+      tags: false,
+    });
+    this._screen.append(this._errorView);
+
     gDebug = this._screen.debug.bind(this._screen);
 
     workspace.on('project_added', project => {
-      const view = new ProjectView(this, this._screen, project);
+      const view = new ProjectView(this, this._projectsContainer, project);
       this._projectToView.set(project, view);
+      this.render();
     });
 
     workspace.on('project_removed', project => {
       const view = this._projectToView.get(project);
       view?.dispose();
       this._projectToView.delete(project);
+      this.render();
     });
+
+    workspace.on('workspace_status_changed', () => this.render());
 
     this._screen.key(['tab'], (ch, key) => {
       this._screen.focusNext();
@@ -295,6 +277,8 @@ class Layout {
     this.render();
   }
 
+  screen() { return this._screen; }
+
   render() {
     if (this._renderTimeout)
       return;
@@ -303,16 +287,6 @@ class Layout {
 
   private _doRender() {
     this._renderTimeout = undefined;
-    const workspaceError = this._workspace.workspaceError();
-    if (workspaceError) {
-      if (!this._errorView)
-        this._errorView = new ErrorView(this._screen);
-      this._errorView.setMessage(workspaceError);
-      this._screen.render();
-      return;
-    }
-    this._errorView?.dispose();
-    this._errorView = undefined;
 
     const projects = this._workspace.topsortProjects();
     const projectViews = projects.map(project => this._projectToView.get(project)!);
@@ -356,6 +330,14 @@ class Layout {
     for (const view of stickedToBottom) {
       if (view.project()?.status() !== 'fail')
         view.scrollToBottom();
+    }
+
+    const workspaceError = this._workspace.workspaceError();
+    if (workspaceError) {
+      this._errorView.setContent(workspaceError);
+      this._errorView.show();
+    } else {
+      this._errorView.hide();
     }
 
     this._screen.render();

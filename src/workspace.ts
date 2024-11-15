@@ -126,7 +126,7 @@ export class Project extends EventEmitter<ProjectEvents> {
     return this._taskTree.taskStatus(this._configPath);
   }
 
-  output() {
+  output(): string {
     return this._configurationError ?? this._output;
   }
 
@@ -182,18 +182,20 @@ export class Project extends EventEmitter<ProjectEvents> {
         options.onComplete(true);
       });
       this._subprocess.on('close', code => {
-        if (options.onComplete(code === 0)) {
-          this._stopTimestampMs = Date.now();  
+        // The process might've reported its status with `Task.done()`, and then
+        // terminate. In this case, we need to log its output code.
+        if (this._taskTree.taskStatus(this._configPath) === 'running') {
+          this._stopTimestampMs = Date.now();
+          options.onComplete(code === 0);
         } else {
           this._onStdOut(`(process exited with code=${code})`);
         }
         this._killProcess();
       });
       this._subprocess.on('error', error => {
-        if (options.onComplete(false)) {
-          this._onStdErr(error.message);
-          this._stopTimestampMs = Date.now();
-        }
+        options.onComplete(false);
+        this._onStdErr(error.message);
+        this._stopTimestampMs = Date.now();
         this._killProcess();
       });
     } catch (e) {

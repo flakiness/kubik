@@ -40,7 +40,7 @@ type Execution = {
 export type TaskOptions<TASK_ID extends string = string> = {
   taskId: TASK_ID,
   signal: AbortSignal,
-  onComplete: (success: boolean) => boolean,
+  onComplete: (success: boolean) => void,
 }
 
 export type TaskTreeOptions = {
@@ -336,14 +336,13 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
     }
   }
 
-  private _onTaskComplete(task: Task<TASK_ID>, taskVersion: string, success: boolean) {
+  private _onTaskComplete(task: Task<TASK_ID>, taskVersion: string, success: boolean): void {
     if (task.execution?.taskVersion !== taskVersion || task.execution.success !== undefined)
-      return false;
+      return;
     task.execution.success = success;
     this.emit('task_finished', task.taskId);
     // We have to schedule "run" in a promise - otherwise, we might re-enter "run" method.
     Promise.resolve().then(() => this.run());
-    return true;
   }
 }
 
