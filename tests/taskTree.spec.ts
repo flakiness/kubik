@@ -129,6 +129,29 @@ test('properly fire task_started/task_finished events for sync builders', async 
   ]);
 });
 
+
+test('make sure events are properly dispatched with sync builder', async () => {
+  const tree = new TaskTree(opts => opts.onComplete(true), { jobs: Infinity });
+  const logger = new Logger(tree);
+
+  tree.setTasks(Multimap.fromEntries(Object.entries({
+    'root': ['dep-1', 'dep-2'],
+    'dep-1': [],
+    'dep-2': [],
+  })));
+  tree.run();
+
+  await onTreeStatus(tree, 'ok');
+  expect(logger.pull()).toEqual([
+    'started: dep-1',
+    'finished: dep-1',
+    'started: dep-2',
+    'finished: dep-2',
+    'started: root',
+    'finished: root',
+  ]);
+});
+
 test('make sure that when tree partially changes, only changed parts are re-built', async () => {
   const tree = new TaskTree(asyncBuild, { jobs: Infinity });
   const logger = new Logger(tree);
@@ -321,8 +344,8 @@ test('tests jobs = 2', async () => {
     'started: leaf-1',
     'started: leaf-2',
     'finished: leaf-1',
-    'started: leaf-3',
     'finished: leaf-2',
+    'started: leaf-3',
     'finished: leaf-3',
   ]);
 });

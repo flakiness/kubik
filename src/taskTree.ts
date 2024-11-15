@@ -282,6 +282,15 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
     this._computeTreeStatus();
   }
 
+  private _resetTask(task: Task<TASK_ID>) {
+    if (!task.execution)
+      return;
+    const execution = task.execution;
+    task.execution = undefined;
+    execution.abortController.abort();
+    this.emit('task_reset', task.taskId);
+  }
+
   private _runnableTasks(): Task<TASK_ID>[] {
     return [...this._tasks.values()].filter(task => !task.execution && task.children.every(isSuccessfulCurrentTask));
   }
@@ -327,21 +336,13 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
     }
   }
 
-  private _resetTask(task: Task<TASK_ID>) {
-    if (!task.execution)
-      return;
-    const execution = task.execution;
-    task.execution = undefined;
-    execution.abortController.abort();
-    this.emit('task_reset', task.taskId);
-  }
-
   private _onTaskComplete(task: Task<TASK_ID>, taskVersion: string, success: boolean) {
     if (task.execution?.taskVersion !== taskVersion || task.execution.success !== undefined)
       return false;
     task.execution.success = success;
     this.emit('task_finished', task.taskId);
-    this.run();
+    // We have to schedule "run" in a promise - otherwise, we might re-enter "run" method.
+    Promise.resolve().then(() => this.run());
     return true;
   }
 }
