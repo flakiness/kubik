@@ -3,7 +3,7 @@
 > ⚠️ **Warning:** Kubik is currently in pre-1.0.0 release. Expect potential changes and experimental features that may not be fully stable yet.
 
 **Kubik** is a simple task runner for node.js, designed specifically to build typescript monorepos.
-Kubik uses `.mjs` scripts to define tasks.
+Kubik uses `.js`/`.mjs` scripts to define tasks.
 
 * [Quick Start](#quick-start)
 * [Getting Started](#getting-started)
@@ -125,8 +125,9 @@ import { Task } from 'kubik';
 
 Task.init(import.meta);
 
+// setInterval will keep node.js process from exiting.
 setInterval(() => console.log(Date.now()), 150);
-// The process will keep running, but Kubik will know that this task is "done".
+// This is how Kubik will know that this task is "done".
 Task.done();
 ```
 
