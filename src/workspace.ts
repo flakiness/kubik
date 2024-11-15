@@ -35,7 +35,7 @@ export const NOTIFY_STARTED_MESSAGE = 'service started';
 export class Project {
   private _workspace: Workspace;
   private _configPath: AbsolutePath;
-  private _taskTree: TaskTree;
+  private _taskTree: TaskTree<AbsolutePath>;
 
   private _fsWatch?: FSWatcher;
   
@@ -47,7 +47,7 @@ export class Project {
   private _stopTimestampMs: number = Date.now();
   private _subprocess?: ChildProcess;
 
-  constructor(workspace: Workspace, taskTree: TaskTree, configPath: AbsolutePath) {
+  constructor(workspace: Workspace, taskTree: TaskTree<AbsolutePath>, configPath: AbsolutePath) {
     this._workspace = workspace;
     this._taskTree = taskTree;
     this._configPath = configPath;
@@ -115,7 +115,7 @@ export class Project {
     return this._output;
   }
 
-  requestBuild(options: TaskOptions) {
+  requestBuild(options: TaskOptions<AbsolutePath>) {
     // Fail build right away if there's some configuration error.
     if (this._configurationError) {
       this._startTimestampMs = Date.now();
@@ -216,7 +216,7 @@ type WorkspaceEvents = {
 }
 
 export class Workspace extends EventEmitter<WorkspaceEvents> {
-  private _taskTree: TaskTree;
+  private _taskTree: TaskTree<AbsolutePath>;
   private _projects = new Map<AbsolutePath, Project>();
 
   private _updateData?: UpdateData;
@@ -229,20 +229,20 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
   constructor(options: WorkspaceOptions) {
     super();
     this._watchMode = options.watchMode;
-    this._taskTree = new TaskTree({
+    this._taskTree = new TaskTree<AbsolutePath>({
       runCallback: (options) => {
-        const project = this._projects.get(options.taskId as AbsolutePath);
+        const project = this._projects.get(options.taskId);
         project?.requestBuild(options);    
       },
       jobs: options.jobs,
     });
-    
+
     this._taskTree.on('task_started', (taskId) => {
-      this.emit('project_started', this._projects.get(taskId as AbsolutePath)!);
+      this.emit('project_started', this._projects.get(taskId)!);
       this.emit('changed');
     });
     this._taskTree.on('task_finished', (taskId) => {
-      this.emit('project_finished', this._projects.get(taskId as AbsolutePath)!)
+      this.emit('project_finished', this._projects.get(taskId)!)
       this.emit('changed');
     });
     this._taskTree.on('task_reset', () => this.emit('changed'));
@@ -254,7 +254,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
 
   projects(): Project[] {
     const taskIds = this._taskTree.topsort();
-    return taskIds.map(taskId => this._projects.get(taskId as AbsolutePath)!);
+    return taskIds.map(taskId => this._projects.get(taskId)!);
   }
 
   setRoots(roots: AbsolutePath[]) {
