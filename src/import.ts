@@ -1,7 +1,7 @@
 import { $, ExecaScriptMethod } from 'execa';
 import path from "path";
 import url from 'url';
-import { NOTIFY_STARTED_MESSAGE } from './workspace.js';
+import { MSG_TASK_DONE } from './workspace.js';
 
 export type TaskOptions = {
   /**
@@ -75,6 +75,6 @@ export class Task {
    */
   static done() {
     if (process.env.KUBIK_RUNNER)
-      process.send?.call(process, NOTIFY_STARTED_MESSAGE);
+      process.send?.call(process, MSG_TASK_DONE);
   }
 }

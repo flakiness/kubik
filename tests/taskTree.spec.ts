@@ -78,7 +78,7 @@ async function onAborted(tree: TaskTree, taskIds: string[]) {
 }
 
 test('should build simple dependency', async () => {
-  const tree = new TaskTree({ runCallback: asyncBuild, jobs: Infinity });
+  const tree = new TaskTree(asyncBuild, { jobs: Infinity });
   const logger = new Logger(tree);
 
   tree.setTasks(Multimap.fromEntries(Object.entries({
@@ -86,7 +86,7 @@ test('should build simple dependency', async () => {
     'middle': ['leaf'],
     'leaf': [],
   })));
-  tree.build();
+  tree.run();
 
   await onCompleted(tree);
   expect(logger.pull()).toEqual([
@@ -99,7 +99,7 @@ test('should build simple dependency', async () => {
   ]);
 
   tree.markChanged('middle');
-  tree.build();
+  tree.run();
 
   await onCompleted(tree);
   expect(logger.log).toEqual([
@@ -113,7 +113,7 @@ test('should build simple dependency', async () => {
 });
 
 test('make sure that when tree partially changes, only changed parts are re-built', async () => {
-  const tree = new TaskTree({ runCallback: asyncBuild, jobs: Infinity });
+  const tree = new TaskTree(asyncBuild, { jobs: Infinity });
   const logger = new Logger(tree);
 
   tree.setTasks(Multimap.fromEntries(Object.entries({
@@ -121,7 +121,7 @@ test('make sure that when tree partially changes, only changed parts are re-buil
     'dep-1': [],
     'dep-2': [],
   })));
-  tree.build();
+  tree.run();
 
   await onCompleted(tree);
   expect(logger.pull()).toEqual([
@@ -137,7 +137,7 @@ test('make sure that when tree partially changes, only changed parts are re-buil
     'root': ['dep-1'],
     'dep-1': [],
   })));
-  tree.build();
+  tree.run();
 
   await onCompleted(tree);
   expect(logger.pull()).toEqual([
@@ -149,17 +149,17 @@ test('make sure that when tree partially changes, only changed parts are re-buil
 });
 
 test('that pending build is stopped if the task was dropped during change.', async () => {
-  const tree = new TaskTree({ runCallback: async opt => {
+  const tree = new TaskTree(async opt => {
     await Promise.resolve();
     if (opt.taskId === 'root' || opt.taskId === 'dep-1')
       opt.onComplete(true);
-  }, jobs: Infinity });
+  }, { jobs: Infinity });
   const logger = new Logger(tree);
 
   tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-1', 'dep-2'],
   })));
-  tree.build();
+  tree.run();
 
   await onCompleted(tree, ['dep-1']);
   expect(logger.pull()).toEqual([
@@ -171,7 +171,7 @@ test('that pending build is stopped if the task was dropped during change.', asy
   tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-1'],
   })));
-  tree.build();
+  tree.run();
   await onCompleted(tree);
   expect(logger.pull()).toEqual([
     'reset: dep-2', // <-- this is the pending build that was aborted due to setBuildTree operation.
@@ -181,17 +181,17 @@ test('that pending build is stopped if the task was dropped during change.', asy
 });
 
 test('that pending build is stopped if the task deps changed.', async () => {
-  const tree = new TaskTree({ runCallback: async opt => {
+  const tree = new TaskTree(async opt => {
     await Promise.resolve();
     if (opt.taskId.startsWith('dep-'))
       opt.onComplete(true);
-  }, jobs: Infinity });
+  }, { jobs: Infinity });
   const logger = new Logger(tree);
 
   tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-1'],
   })));
-  tree.build();
+  tree.run();
 
   await onStarted(tree, ['root']);
   expect(logger.pull()).toEqual([
@@ -203,7 +203,7 @@ test('that pending build is stopped if the task deps changed.', async () => {
   tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-2'],
   })));
-  tree.build();
+  tree.run();
   await onStarted(tree, ['root']);
   expect(logger.pull()).toEqual([
     'reset: dep-1',
@@ -215,17 +215,17 @@ test('that pending build is stopped if the task deps changed.', async () => {
 });
 
 test('test that pending build is stopped if the task inputs are changed', async () => {
-  const tree = new TaskTree({ runCallback: async opt => {
+  const tree = new TaskTree(async opt => {
     await Promise.resolve();
     if (opt.taskId === 'dep')
       opt.onComplete(true);
-  }, jobs: Infinity });
+  }, { jobs: Infinity });
   const logger = new Logger(tree);
 
   tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep'],
   })));
-  tree.build();
+  tree.run();
 
   await onStarted(tree, ['root']);
   expect(logger.pull()).toEqual([
@@ -235,7 +235,7 @@ test('test that pending build is stopped if the task inputs are changed', async 
   ]);
 
   tree.markChanged('dep');
-  tree.build();
+  tree.run();
   await onStarted(tree, ['root']);
 
   expect(logger.pull()).toEqual([
@@ -248,13 +248,13 @@ test('test that pending build is stopped if the task inputs are changed', async 
 });
 
 test('tests parallel compilation', async () => {
-  const tree = new TaskTree({ runCallback: asyncBuild, jobs: Infinity });
+  const tree = new TaskTree(asyncBuild, { jobs: Infinity });
   const logger = new Logger(tree);
 
   tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-1', 'dep-2'],
   })));
-  tree.build();
+  tree.run();
 
   await onCompleted(tree);
   expect(logger.pull()).toEqual([
@@ -268,13 +268,13 @@ test('tests parallel compilation', async () => {
 });
 
 test('tests sequential compilation', async () => {
-  const tree = new TaskTree({ runCallback: asyncBuild, jobs: 1 });
+  const tree = new TaskTree(asyncBuild, { jobs: 1 });
   const logger = new Logger(tree);
 
   tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-1', 'dep-2'],
   })));
-  tree.build();
+  tree.run();
 
   await onCompleted(tree);
   expect(logger.pull()).toEqual([
@@ -288,7 +288,7 @@ test('tests sequential compilation', async () => {
 });
 
 test('tests jobs = 2', async () => {
-  const tree = new TaskTree({ runCallback: asyncBuild, jobs: 2 });
+  const tree = new TaskTree(asyncBuild, { jobs: 2 });
   const logger = new Logger(tree);
 
   tree.setTasks(Multimap.fromEntries(Object.entries({
@@ -296,7 +296,7 @@ test('tests jobs = 2', async () => {
     'leaf-2': [],
     'leaf-3': [],
   })));
-  tree.build();
+  tree.run();
 
   await onCompleted(tree);
   expect(logger.pull()).toEqual([
@@ -310,14 +310,14 @@ test('tests jobs = 2', async () => {
 });
 
 test('test multiple roots with single deps', async () => {
-  const tree = new TaskTree({ runCallback: asyncBuild, jobs: Infinity });
+  const tree = new TaskTree(asyncBuild, { jobs: Infinity });
   const logger = new Logger(tree);
 
   tree.setTasks(Multimap.fromEntries(Object.entries({
     'root-1': ['dep'],
     'root-2': ['dep'],
   })));
-  tree.build();
+  tree.run();
 
   await onCompleted(tree);
   expect(logger.pull()).toEqual([
@@ -331,7 +331,7 @@ test('test multiple roots with single deps', async () => {
 
   // Change common dep and start rebuilding.
   tree.markChanged('dep');
-  tree.build();
+  tree.run();
   await onCompleted(tree);
   expect(logger.pull()).toEqual([
     'reset: dep',
@@ -347,7 +347,7 @@ test('test multiple roots with single deps', async () => {
 });
 
 test('test deps cycle detection', async () => {
-  const tree = new TaskTree({ runCallback: asyncBuild, jobs: Infinity });
+  const tree = new TaskTree(asyncBuild, { jobs: Infinity });
   expect(() => tree.setTasks(Multimap.fromEntries(Object.entries({
     'task-0': ['task-1'],
     'task-1': ['task-2'],
@@ -357,7 +357,7 @@ test('test deps cycle detection', async () => {
 });
 
 test('no roots are throws as dependency cycle error', async () => {
-  const tree = new TaskTree({ runCallback: asyncBuild, jobs: Infinity });
+  const tree = new TaskTree(asyncBuild, { jobs: Infinity });
   expect(() => tree.setTasks(Multimap.fromEntries(Object.entries({
     'task-1': ['task-2'],
     'task-2': ['task-3'],
@@ -366,14 +366,14 @@ test('no roots are throws as dependency cycle error', async () => {
 });
 
 test('empty tree should not throw any errors', async () => {
-  const tree = new TaskTree({ runCallback: () => {}, jobs: Infinity });
+  const tree = new TaskTree(() => {}, { jobs: Infinity });
   const logger = new Logger(tree);
 
   tree.setTasks(Multimap.fromEntries(Object.entries({
     'task-1': [],
     'task-2': [],
   })));
-  tree.build();
+  tree.run();
   await onStarted(tree, ['task-1', 'task-2']);
   expect(logger.pull()).toEqual([
     'started: task-1',
@@ -388,17 +388,17 @@ test('empty tree should not throw any errors', async () => {
 });
 
 test('make sure that task build is reset when deps are changed', async () => {
-  const tree = new TaskTree({ runCallback: async opt => {
+  const tree = new TaskTree(async opt => {
     await Promise.resolve();
     if (opt.taskId === 'dep-1')
       opt.onComplete(true);
-  }, jobs: Infinity });
+  }, { jobs: Infinity });
   const logger = new Logger(tree);
 
   tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-1'],
   })));
-  tree.build();
+  tree.run();
 
   await onStarted(tree, ['root']);
   expect(logger.pull()).toEqual([
@@ -419,7 +419,7 @@ test('make sure that task build is reset when deps are changed', async () => {
 });
 
 test('check build order', async () => {
-  const tree = new TaskTree({ runCallback: asyncBuild, jobs: Infinity });
+  const tree = new TaskTree(asyncBuild, { jobs: Infinity });
   tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': ['dep-1', 'dep-2'],
     'dep-1': ['leaf-1', 'leaf-2', 'leaf-3'],
@@ -435,12 +435,12 @@ test('check build order', async () => {
 });
 
 test('should abort only once', async () => {
-  const tree = new TaskTree({ runCallback: () => {}, jobs: Infinity });
+  const tree = new TaskTree(() => {}, { jobs: Infinity });
   const logger = new Logger(tree);
   tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': [],
   })));
-  tree.build();
+  tree.run();
   await onStarted(tree, ['root']);
   expect(logger.pull()).toEqual([
     'started: root',
@@ -456,18 +456,18 @@ test('should abort only once', async () => {
 test('cannot report status twice', async () => {
   let resolve: () => void;
   const promise = new Promise<void>(x => resolve = x);
-  const tree = new TaskTree({ runCallback: async (options) => {
+  const tree = new TaskTree(async (options) => {
     await Promise.resolve();
     options.onComplete(true);
     await Promise.resolve();
     options.onComplete(false);
     resolve();
-  }, jobs: Infinity });
+  }, { jobs: Infinity });
   const logger = new Logger(tree);
   tree.setTasks(Multimap.fromEntries(Object.entries({
     'root': [],
   })));
-  tree.build();
+  tree.run();
   await promise;
   expect(logger.pull()).toEqual([
     'started: root',

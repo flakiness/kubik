@@ -25,12 +25,19 @@ function renderCycleError(cycle: string[]) {
   return ['Dependency cycle detected:', ...cycleMessage].join('\n');
 }
 
-type WorkspaceOptions = {
+export type WorkspaceOptions = {
+  roots: AbsolutePath[],
+  nodeOptions: NodeForkOptions,
   watchMode: boolean,
   jobs: number,
 };
 
-export const NOTIFY_STARTED_MESSAGE = 'service started';
+type NodeForkOptions = {
+  envFile?: AbsolutePath,
+  forceColors?: boolean,
+}
+
+export const MSG_TASK_DONE = 'service started';
 
 export class Project {
   private _workspace: Workspace;
@@ -42,15 +49,18 @@ export class Project {
   private _customName?: string;
   private _configurationError?: any;
 
+  private _nodeForkOptions: NodeForkOptions;
+
   private _output: string = '';
   private _startTimestampMs: number = Date.now();
-  private _stopTimestampMs: number = Date.now();
+  private _stopTimestampMs?: number = Date.now();
   private _subprocess?: ChildProcess;
 
-  constructor(workspace: Workspace, taskTree: TaskTree<AbsolutePath>, configPath: AbsolutePath) {
+  constructor(workspace: Workspace, taskTree: TaskTree<AbsolutePath>, configPath: AbsolutePath, nodeForkOptions: NodeForkOptions) {
     this._workspace = workspace;
     this._taskTree = taskTree;
     this._configPath = configPath;
+    this._nodeForkOptions = nodeForkOptions;
   }
 
   async startFileWatch(toWatch: AbsolutePath[], toIgnore: AbsolutePath[], onFilesChanged?: (project: Project, filePath: AbsolutePath) => void) {
@@ -100,7 +110,7 @@ export class Project {
 
   durationMs() {
     const status = this.status();
-    return (status === 'fail' || status === 'ok') ? this._stopTimestampMs - this._startTimestampMs : 0;
+    return (status === 'fail' || status === 'ok') ? (this._stopTimestampMs ?? Date.now()) - this._startTimestampMs : 0;
   }
 
   name() {
@@ -130,14 +140,26 @@ export class Project {
     try {
       this._output = '';
       this._startTimestampMs = Date.now();
+      this._stopTimestampMs = undefined;
+      const execArgv: string[] = [
+        '--enable-source-maps',
+      ];
+      if (this._nodeForkOptions.envFile)
+        execArgv.push(`--env-file=${this._nodeForkOptions.envFile}`);
+      const env: Record<string, string|undefined> = {
+        ...process.env,
+        KUBIK_WATCH_MODE: this._fsWatch ? '1' : undefined,
+        KUBIK_RUNNER: '1',
+      };
+      if (this._nodeForkOptions.forceColors)
+        env.FORCE_COLOR = '1';
       this._subprocess = fork(this._configPath, {
         cwd: path.dirname(this._configPath),
         stdio: 'pipe',
-        env: {
-          ...process.env,
-          KUBIK_WATCH_MODE: this._fsWatch ? '1' : undefined,
-          KUBIK_RUNNER: '1',
-        },
+        execArgv,
+        env,
+        // Start process detached, so that we can effectively kill the whole process group
+        // (the process and any child processes it might've spawned)
         detached: true,
       });
       options.signal.addEventListener('abort', () => {
@@ -149,7 +171,7 @@ export class Project {
       this._subprocess.stderr?.on('data', data => this._onStdErr(data.toString('utf8')));
 
       this._subprocess.on('message', msg => {
-        if (msg !== NOTIFY_STARTED_MESSAGE)
+        if (msg !== MSG_TASK_DONE)
           return;
         this._stopTimestampMs = Date.now();
         options.onComplete(true);
@@ -183,7 +205,6 @@ export class Project {
     this._subprocess.stdout?.removeAllListeners();
     this._subprocess.stderr?.removeAllListeners();
     this._subprocess.removeAllListeners();
-    // this._output = '';
     killProcessTree(this._subprocess, 'SIGKILL');
     this._subprocess = undefined;
   }
@@ -220,22 +241,16 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
   private _projects = new Map<AbsolutePath, Project>();
 
   private _updateData?: UpdateData;
-  private _roots: AbsolutePath[] = [];
-
-  private _watchMode: boolean;
 
   private _workspaceError?: string;
 
-  constructor(options: WorkspaceOptions) {
+  constructor(private _options: WorkspaceOptions) {
     super();
-    this._watchMode = options.watchMode;
-    this._taskTree = new TaskTree<AbsolutePath>({
-      runCallback: (options) => {
-        const project = this._projects.get(options.taskId);
-        project?.requestBuild(options);    
-      },
-      jobs: options.jobs,
-    });
+
+    this._taskTree = new TaskTree<AbsolutePath>(options => {
+      const project = this._projects.get(options.taskId);
+      project?.requestBuild(options);    
+    }, { jobs: this._options.jobs, });
 
     this._taskTree.on('task_started', (taskId) => {
       this.emit('project_started', this._projects.get(taskId)!);
@@ -246,7 +261,11 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       this.emit('changed');
     });
     this._taskTree.on('task_reset', () => this.emit('changed'));
+
+    this._scheduleUpdate({ needsRereadConfigFiles: true });
   }
+
+  options() { return this._options; }
 
   workspaceError() {
     return this._workspaceError;
@@ -255,11 +274,6 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
   projects(): Project[] {
     const taskIds = this._taskTree.topsort();
     return taskIds.map(taskId => this._projects.get(taskId)!);
-  }
-
-  setRoots(roots: AbsolutePath[]) {
-    this._roots = roots;
-    this._scheduleUpdate({ needsRereadConfigFiles: true });
   }
 
   private _scheduleUpdate(options: { changedProject?: Project, needsRereadConfigFiles?: boolean }) {
@@ -280,7 +294,6 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
 
   async stop() {
     clearTimeout(this._updateData?.timeout);
-    this._watchMode = false;
     this._taskTree.resetAllTasks();
     for (const project of this._projects.values())
       project.dispose();
@@ -313,13 +326,13 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       this._updateData.timeout = setTimeout(this._doUpdate.bind(this), 150);
     } else {
       this._updateData = undefined;
-      this._taskTree.build();
+      this._taskTree.run();
     }
   }
 
   private async _readConfiguration() {
     let time = Date.now();
-    const configs = await readConfigTree(this._roots);
+    const configs = await readConfigTree(this._options.roots);
     dbgWatchApp(`reading configs:`, (Date.now() - time) + 'ms');
     const projectTree = new Multimap<AbsolutePath, AbsolutePath>();
     for (const [key, value] of configs) {
@@ -350,11 +363,11 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     for (const config of configs.values()) {
       let project = this._projects.get(config.configPath);
       if (!project) {
-        project = new Project(this, this._taskTree, config.configPath);
+        project = new Project(this, this._taskTree, config.configPath, this._options.nodeOptions);
         this._projects.set(config.configPath, project);
       }
       project.setConfiguration(config);
-      if (this._watchMode) {
+      if (this._options.watchMode) {
         project.startFileWatch(config.config?.watch ?? [], config.config?.ignore ?? [], (project, filePath) => this._scheduleUpdate({
           changedProject: project,
           needsRereadConfigFiles: filePath === project.configPath(),

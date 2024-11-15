@@ -2,7 +2,6 @@
 
 import chalk from 'chalk';
 import blessed from 'neo-blessed';
-import { AbsolutePath } from './configLoader.js';
 import { stripAnsi, timeInSeconds } from './utils.js';
 import { Project, Workspace } from './workspace.js';
 
@@ -358,13 +357,7 @@ class Layout {
   }
 }
 
-export function startWatchApp(roots: AbsolutePath[], jobs: number) {
-  const workspace = new Workspace({
-    jobs,
-    watchMode: true,
-  });
-
-  workspace.setRoots(roots);
+export function startWatchApp(workspace: Workspace) {
   const layout = new Layout(workspace);
   process.stdout.on('resize', () => layout.render());
 }

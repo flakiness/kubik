@@ -4,27 +4,37 @@ import EventEmitter from "events";
 import { Multimap } from "./multimap.js";
 import { sha256 } from "./utils.js";
 
-type Execution = {
-  success?: boolean,
-  abortController: AbortController,
-  buildVersion: string,
-}
-
 type Task<TASK_ID extends string> = {
   taskId: TASK_ID,
   parents: Task<TASK_ID>[],
   children: Task<TASK_ID>[],
-  generation: number,
+  /**
+   * Since we want to know when the tree changes its shape, we compute a SHA of the subtree which
+   * is a unique signature of the tree structure. This is similar to git's tree sha.
+   */
   subtreeSha: string,
   /**
-   * The execution is set if:
-   * 1. It's been scheduled with buildCallback
-   * 2. The version of the node hasn't changed since the build was started.
-   * 
-   * If the version of the node changes while the build is in-progress,
-   * it'll be aborted and the value here is cleared.
+   * Each task has a "generation" - an ever-increasing number that is bumped every time either task inputs
+   * or some of its descendant task inputs change.
+   * A combination of tasks's subtree SHA and generation yields a "task version".
+   */
+  generation: number,
+  /**
+   * Each task might have an execution object. If there's no execution, then the task is either in a "n/a" or "pending" status.
+   * Otherwise, the execution might be on-going (if the object exists, but the result hasn't been reported yet), or completed.
    */
   execution?: Execution,
+}
+
+/**
+ * Each execution object contains an execution result, which might be undefined for on-going executions.
+ * The abort controller is used to reset task executions, and the "taskVersion" marks the version for which
+ * this execution was created.
+ */
+type Execution = {
+  success?: boolean,
+  abortController: AbortController,
+  taskVersion: string,
 }
 
 export type TaskOptions<TASK_ID extends string = string> = {
@@ -33,8 +43,7 @@ export type TaskOptions<TASK_ID extends string = string> = {
   onComplete: (success: boolean) => boolean,
 }
 
-export type TaskTreeOptions<TASK_ID extends string> = {
-  runCallback: (options: TaskOptions<TASK_ID>) => void,
+export type TaskTreeOptions = {
   jobs: number,
 }
 
@@ -53,6 +62,27 @@ type TaskTreeEvents<TASK_ID extends string> = {
   'task_reset': [TASK_ID],
 }
 
+/**
+ * Task tree is an orchestration engine. It is given a set of tasks with their IDs and their
+ * inter-dependencies, and its goal to run these tasks to a completion.
+ * 
+ * TaskTree doesn't know how to run tasks and it doesn't know about task inputs. Instead, its client
+ * are requested to run tasks (via provided callback) and they should notify TaskTree about task input
+ * changes via the `taskTree.markChanged(taskId)` method.
+ * 
+ * Tasks are organized as a directed acyclic graph; TaskTree makes sure to never accept tasks with cycles
+ * and will throw in this case.
+ * 
+ * Once initialized, TaskTree requires client to call `run()` to start running tasks. TaskTree will
+ * advance tasks execution until there will be no more runnable tasks. In this case, it will fire the "completed"
+ * event.
+ * 
+ * TaskTree will also run the following events, signaling about Task lifecycle:
+ * - "task_started" - when the execution of a task started
+ * - "task_finished" - when the execution completed
+ * - "task_reset" - when the execution was started, but it is no longer relevant since task version has changed due to
+ *   either `taskTree.setTasks()` or `taskTree.markChanged()` methods.
+ */
 export class TaskTree<TASK_ID extends string = string> extends EventEmitter<TaskTreeEvents<TASK_ID>> {
   static findDependencyCycle<TASK_ID extends string = string>(tasks: Multimap<TASK_ID, TASK_ID>) {
     const stackIndexes = new Map<TASK_ID, number>();
@@ -87,7 +117,7 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
   private _roots: Task<TASK_ID>[] = [];
   private _lastCompleteTreeVersion: string = '';
   
-  constructor(private _options: TaskTreeOptions<TASK_ID>) {
+  constructor(private _runCallback: (options: TaskOptions<TASK_ID>) => void, private _options: TaskTreeOptions) {
     super();
   }
 
@@ -112,7 +142,7 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
   /**
    * Set build tree. This will synchronously abort builds for those nodes
    * that were either removed or changed their dependencies.
-   * NOTE: to actually kick off build, call `buildTree.build()` after setting the tree.
+   * NOTE: to actually kick off build, call `taskTree.run()` after setting the tree.
    * @param tasks 
    */
   setTasks(tasks: Multimap<TASK_ID, TASK_ID>) {
@@ -240,7 +270,7 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
    * To stop the process, run the `resetAllBuilds()` method.
    * @returns 
    */
-  build() {
+  run() {
     const tasksBeingRun = this._tasksBeingRun();
     const runnableTasks = this._runnableTasks();
 
@@ -260,16 +290,16 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
     for (const task of runnableTasks.slice(0, capacity)) {
       task.execution = {
         abortController: new AbortController(),
-        buildVersion: taskVersion(task),
+        taskVersion: taskVersion(task),
       };
       const taskOptions: TaskOptions<TASK_ID> = {
         taskId: task.taskId,
-        onComplete: this._onTaskComplete.bind(this, task, task.execution.buildVersion),
+        onComplete: this._onTaskComplete.bind(this, task, task.execution.taskVersion),
         signal: task.execution.abortController.signal,
       };
       // Request building in a microtask to avoid reenterability.
       Promise.resolve().then(() => {
-        this._options.runCallback.call(null, taskOptions)
+        this._runCallback.call(null, taskOptions)
         this.emit('task_started', task.taskId);
       });
     }
@@ -285,17 +315,17 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
   }
 
   private _onTaskComplete(task: Task<TASK_ID>, taskVersion: string, success: boolean) {
-    if (task.execution?.buildVersion !== taskVersion || task.execution.success !== undefined)
+    if (task.execution?.taskVersion !== taskVersion || task.execution.success !== undefined)
       return false;
     task.execution.success = success;
     this.emit('task_finished', task.taskId);
-    this.build();
+    this.run();
     return true;
   }
 }
 
 function isSuccessfulCurrentTask<TASK_ID extends string>(task: Task<TASK_ID>) {
-  return taskVersion(task) === task.execution?.buildVersion && task.execution.success;
+  return taskVersion(task) === task.execution?.taskVersion && task.execution.success;
 }
 
 function taskVersion<TASK_ID extends string>(task: Task<TASK_ID>): string {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import chalk from "chalk";
+import chalk, { supportsColor } from "chalk";
 import { Option, program } from "commander";
 import path from "path";
 import { AbsolutePath } from "./configLoader.js";
@@ -12,25 +12,28 @@ program
   .description('Start build')
   .addOption(new Option(`-j, --jobs <number>`, `Allow N jobs at once; infinite jobs with no arg.`).argParser(parseInt))
   .option('-w, --watch', 'Watch files for changes')
+  .option('--env-file <env file>', 'Use environment file for all tasks')
   .arguments('<files...>')
-  .action((files: string[], options: { jobs?: number, watch?: boolean }) => {
+  .action((files: string[], options: { jobs?: number, envFile?: string, watch?: boolean }) => {
     const roots = files.map(file => path.resolve(process.cwd(), file)) as AbsolutePath[];
+    const workspace = new Workspace({
+      roots,
+      jobs: options.jobs ?? Infinity,
+      nodeOptions: {
+        envFile: options.envFile ? path.resolve(process.cwd(), options.envFile) as AbsolutePath : undefined,
+        forceColors: !!supportsColor,
+      },
+      watchMode: options.watch ?? false,
+    });
     if (options.watch)
-      startWatchApp(roots, options.jobs ?? Infinity)
-    else 
-      cliBuild(roots, options.jobs ?? Infinity);
+      startWatchApp(workspace)
+    else
+      cliLogger(workspace);
   });
 
 program.parse();
 
-function cliBuild(roots: AbsolutePath[], jobs: number) {
-  const workspace = new Workspace({
-    jobs,
-    watchMode: false,
-  });
-
-  workspace.setRoots(roots);
-
+function cliLogger(workspace: Workspace) {
   workspace.on('project_started', project => {
     console.log(chalk.yellow(`[kubik] Starting ${chalk.bold(project.name())}...`));
   });
@@ -46,7 +49,7 @@ function cliBuild(roots: AbsolutePath[], jobs: number) {
   });
 
   // For a sequential build, pipe stdout.
-  if (jobs === 1) {
+  if (workspace.options().jobs === 1) {
     workspace.on('project_stdout', (project, text) => process.stdout.write(text));
     workspace.on('project_stderr', (project, text) => process.stderr.write(text));
   } else {
