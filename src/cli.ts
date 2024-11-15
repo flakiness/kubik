@@ -34,34 +34,36 @@ program
 program.parse();
 
 function cliLogger(workspace: Workspace) {
-  workspace.on('project_started', project => {
-    console.log(chalk.yellow(`[kubik] Starting ${chalk.bold(project.name())}...`));
-  });
-  workspace.on('project_finished', project => {
-    if (project.status() === 'fail')
-      console.log(chalk.red(`[kubik] Failed ${chalk.bold(project.name())} in ${chalk.bold(timeInSeconds(project.durationMs()))}`));
-    else if (project.status() === 'ok')
-      console.log(chalk.green(`[kubik] Succeeded ${chalk.bold(project.name())} in ${chalk.bold(timeInSeconds(project.durationMs()))}`));
-  });
-  workspace.on('workspace_error', (error) => {
-    console.error(error);
-    process.exitCode = 1;
-  });
-
-  // For a sequential build, pipe stdout.
-  if (workspace.options().jobs === 1) {
-    workspace.on('project_stdout', (project, text) => process.stdout.write(text));
-    workspace.on('project_stderr', (project, text) => process.stderr.write(text));
-  } else {
-    const logLine = (project: Project, line: string) => console.log(`[${project.name()}] ${line}`);
-    workspace.on('project_stderr', (project, text) => {
-      for (const line of text.trim().split('\n'))
-        logLine(project, line);
+  workspace.on('project_added', project => {
+    project.on('build_status_changed', () => {
+      if (project.status() === 'fail')
+        console.log(chalk.red(`[kubik] Failed ${chalk.bold(project.name())} in ${chalk.bold(timeInSeconds(project.durationMs()))}`));
+      else if (project.status() === 'ok')
+        console.log(chalk.green(`[kubik] Succeeded ${chalk.bold(project.name())} in ${chalk.bold(timeInSeconds(project.durationMs()))}`));
+      else if (project.status() === 'running')
+        console.log(chalk.yellow(`[kubik] Starting ${chalk.bold(project.name())}...`));
     });
+    // For a sequential build, pipe stdout.
+    if (workspace.options().jobs === 1) {
+      project.on('build_stdout', (text) => process.stdout.write(text));
+      project.on('build_stderr', (text) => process.stderr.write(text));
+    } else {
+      const logLine = (project: Project, line: string) => console.log(`[${project.name()}] ${line}`);
+      project.on('build_stderr', (text) => {
+        for (const line of text.trim().split('\n'))
+          logLine(project, line);
+      });
 
-    workspace.on('project_stdout', (project, text) => {
-      for (const line of text.trim().split('\n'))
-        logLine(project, line);
-    });
-  }
+      project.on('build_stdout', (text) => {
+        for (const line of text.trim().split('\n'))
+          logLine(project, line);
+      });
+    }
+  })
+  workspace.on('workspace_status_changed', () => {
+    if (workspace.workspaceStatus() === 'error') {
+      console.error(workspace.workspaceError());
+      process.exitCode = 1;
+    }
+  });
 }

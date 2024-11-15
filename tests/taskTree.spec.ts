@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { Multimap } from '../src/multimap.js';
-import { CycleError, TaskOptions, TaskTree } from '../src/taskTree.js';
+import { CycleError, TaskOptions, TaskStatus, TaskTree, TaskTreeStatus } from '../src/taskTree.js';
 
 class Logger {
   public log: string[] = [];
@@ -31,48 +31,34 @@ async function asyncBuild(options: TaskOptions) {
   options.onComplete(true);
 }
 
-async function onCompleted(tree: TaskTree, taskIds?: string[]) {
-  if (!taskIds) {
-    await new Promise<void>(x => tree.once('completed', x));
+async function onTreeStatus(tree: TaskTree, expected: TaskTreeStatus) {
+  if (tree.status() === expected) 
     return;
-  }
-  const pending = new Set(taskIds);
   await new Promise<void>(resolve => {
-    const listener = (taskId: string) => {
-      pending.delete(taskId);
-      if (!pending.size) {
+    const listener = (status: TaskTreeStatus) => {
+      if (status === expected) {
+        tree.off('tree_status_changed', listener);
+        resolve();
+      }
+    }
+    tree.on('tree_status_changed', listener);
+  });
+}
+
+async function onTaskStatus(tree: TaskTree, taskId: string, expected: TaskStatus) {
+  if (tree.taskStatus(taskId) === expected) 
+    return;
+  await new Promise<void>(resolve => {
+    const listener = () => {
+      if (tree.taskStatus(taskId) === expected) {
         tree.off('task_finished', listener);
+        tree.off('task_started', listener);
+        tree.off('task_reset', listener);
         resolve();
       }
     }
     tree.on('task_finished', listener);
-  });
-}
-
-async function onStarted(tree: TaskTree, taskIds: string[]) {
-  const pending = new Set(taskIds);
-  await new Promise<void>(resolve => {
-    const listener = (taskId: string) => {
-      pending.delete(taskId);
-      if (!pending.size) {
-        tree.off('task_started', listener);
-        resolve();
-      }
-    }  
     tree.on('task_started', listener);
-  });
-}
-
-async function onAborted(tree: TaskTree, taskIds: string[]) {
-  const pending = new Set(taskIds);
-  await new Promise<void>(resolve => {
-    const listener = (taskId: string) => {
-      pending.delete(taskId);
-      if (!pending.size) {
-        tree.off('task_reset', listener);
-        resolve();
-      }
-    }  
     tree.on('task_reset', listener);
   });
 }
@@ -88,7 +74,7 @@ test('should build simple dependency', async () => {
   })));
   tree.run();
 
-  await onCompleted(tree);
+  await onTreeStatus(tree, 'ok');
   expect(logger.pull()).toEqual([
     'started: leaf',
     'finished: leaf',
@@ -101,12 +87,43 @@ test('should build simple dependency', async () => {
   tree.markChanged('middle');
   tree.run();
 
-  await onCompleted(tree);
+  await onTreeStatus(tree, 'ok');
   expect(logger.log).toEqual([
     'reset: middle',
     'reset: root',
     'started: middle',
     'finished: middle',
+    'started: root',
+    'finished: root',
+  ]);
+});
+
+test('should properly report tree status when setting tasks', async () => {
+  const tree = new TaskTree(asyncBuild, { jobs: Infinity });
+  expect(tree.status()).toBe('ok');
+  tree.setTasks(Multimap.fromEntries(Object.entries({
+    'foo': [],
+  })));
+  expect(tree.status()).toBe('pending');
+  tree.run();
+  await onTreeStatus(tree, 'ok');
+  expect(tree.status()).toBe('ok');
+  tree.markChanged('baz'); // non-existing node should not change status
+  expect(tree.status()).toBe('ok');
+  tree.markChanged('foo'); // existing node should transition into "pending"
+  expect(tree.status()).toBe('pending');
+});
+
+test('properly fire task_started/task_finished events for sync builders', async () => {
+  const tree = new TaskTree(opts => opts.onComplete(true), { jobs: Infinity });
+  const logger = new Logger(tree);
+
+  tree.setTasks(Multimap.fromEntries(Object.entries({
+    'root': [],
+  })));
+  tree.run();
+  await onTreeStatus(tree, 'ok');
+  expect(logger.pull()).toEqual([
     'started: root',
     'finished: root',
   ]);
@@ -123,7 +140,7 @@ test('make sure that when tree partially changes, only changed parts are re-buil
   })));
   tree.run();
 
-  await onCompleted(tree);
+  await onTreeStatus(tree, 'ok');
   expect(logger.pull()).toEqual([
     'started: dep-1',
     'started: dep-2',
@@ -139,7 +156,7 @@ test('make sure that when tree partially changes, only changed parts are re-buil
   })));
   tree.run();
 
-  await onCompleted(tree);
+  await onTreeStatus(tree, 'ok');
   expect(logger.pull()).toEqual([
     'reset: dep-2',
     'reset: root',
@@ -161,7 +178,7 @@ test('that pending build is stopped if the task was dropped during change.', asy
   })));
   tree.run();
 
-  await onCompleted(tree, ['dep-1']);
+  await onTaskStatus(tree, 'dep-1', 'ok');
   expect(logger.pull()).toEqual([
     'started: dep-1',
     'started: dep-2',
@@ -172,7 +189,7 @@ test('that pending build is stopped if the task was dropped during change.', asy
     'root': ['dep-1'],
   })));
   tree.run();
-  await onCompleted(tree);
+  await onTreeStatus(tree, 'ok');
   expect(logger.pull()).toEqual([
     'reset: dep-2', // <-- this is the pending build that was aborted due to setBuildTree operation.
     'started: root',
@@ -193,7 +210,7 @@ test('that pending build is stopped if the task deps changed.', async () => {
   })));
   tree.run();
 
-  await onStarted(tree, ['root']);
+  await onTaskStatus(tree, 'root', 'running');
   expect(logger.pull()).toEqual([
     'started: dep-1',
     'finished: dep-1',
@@ -204,7 +221,7 @@ test('that pending build is stopped if the task deps changed.', async () => {
     'root': ['dep-2'],
   })));
   tree.run();
-  await onStarted(tree, ['root']);
+  await onTaskStatus(tree, 'root', 'running');
   expect(logger.pull()).toEqual([
     'reset: dep-1',
     'reset: root', // <-- this is the pending build that was aborted due to setBuildTree operation.
@@ -227,7 +244,7 @@ test('test that pending build is stopped if the task inputs are changed', async 
   })));
   tree.run();
 
-  await onStarted(tree, ['root']);
+  await onTaskStatus(tree, 'root', 'running');
   expect(logger.pull()).toEqual([
     'started: dep',
     'finished: dep',
@@ -235,8 +252,9 @@ test('test that pending build is stopped if the task inputs are changed', async 
   ]);
 
   tree.markChanged('dep');
+  await onTaskStatus(tree, 'root', 'pending');
   tree.run();
-  await onStarted(tree, ['root']);
+  await onTaskStatus(tree, 'root', 'running');
 
   expect(logger.pull()).toEqual([
     'reset: dep', // <-- this was reset since it was changed
@@ -256,7 +274,7 @@ test('tests parallel compilation', async () => {
   })));
   tree.run();
 
-  await onCompleted(tree);
+  await onTreeStatus(tree, 'ok');
   expect(logger.pull()).toEqual([
     'started: dep-1',
     'started: dep-2',
@@ -276,7 +294,7 @@ test('tests sequential compilation', async () => {
   })));
   tree.run();
 
-  await onCompleted(tree);
+  await onTreeStatus(tree, 'ok');
   expect(logger.pull()).toEqual([
     'started: dep-1',
     'finished: dep-1',
@@ -298,13 +316,13 @@ test('tests jobs = 2', async () => {
   })));
   tree.run();
 
-  await onCompleted(tree);
+  await onTreeStatus(tree, 'ok');
   expect(logger.pull()).toEqual([
     'started: leaf-1',
     'started: leaf-2',
     'finished: leaf-1',
-    'finished: leaf-2',
     'started: leaf-3',
+    'finished: leaf-2',
     'finished: leaf-3',
   ]);
 });
@@ -319,7 +337,7 @@ test('test multiple roots with single deps', async () => {
   })));
   tree.run();
 
-  await onCompleted(tree);
+  await onTreeStatus(tree, 'ok');
   expect(logger.pull()).toEqual([
     'started: dep',
     'finished: dep',
@@ -332,7 +350,7 @@ test('test multiple roots with single deps', async () => {
   // Change common dep and start rebuilding.
   tree.markChanged('dep');
   tree.run();
-  await onCompleted(tree);
+  await onTreeStatus(tree, 'ok');
   expect(logger.pull()).toEqual([
     'reset: dep',
     'reset: root-1',
@@ -374,7 +392,12 @@ test('empty tree should not throw any errors', async () => {
     'task-2': [],
   })));
   tree.run();
-  await onStarted(tree, ['task-1', 'task-2']);
+
+  await Promise.all([
+    onTaskStatus(tree, 'task-1', 'running'),
+    onTaskStatus(tree, 'task-2', 'running'),
+  ]);
+
   expect(logger.pull()).toEqual([
     'started: task-1',
     'started: task-2',
@@ -400,7 +423,7 @@ test('make sure that task build is reset when deps are changed', async () => {
   })));
   tree.run();
 
-  await onStarted(tree, ['root']);
+  await onTaskStatus(tree, 'root', 'running'),
   expect(logger.pull()).toEqual([
     'started: dep-1',
     'finished: dep-1',
@@ -441,7 +464,8 @@ test('should abort only once', async () => {
     'root': [],
   })));
   tree.run();
-  await onStarted(tree, ['root']);
+
+  await onTaskStatus(tree, 'root', 'running'),
   expect(logger.pull()).toEqual([
     'started: root',
   ]);

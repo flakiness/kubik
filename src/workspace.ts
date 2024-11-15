@@ -5,7 +5,7 @@ import path from "path";
 import { AbsolutePath, ReadConfigResult, readConfigTree, toAbsolutePath } from "./configLoader.js";
 import { Multimap } from "./multimap.js";
 import { killProcessTree } from "./process_utils.js";
-import { TaskOptions, TaskTree } from "./taskTree.js";
+import { TaskOptions, TaskTree, TaskTreeStatus } from "./taskTree.js";
 import { dbgWatchApp } from "./watchApp.js";
 
 type UpdateData = {
@@ -39,8 +39,14 @@ type NodeForkOptions = {
 
 export const MSG_TASK_DONE = 'service started';
 
-export class Project {
-  private _workspace: Workspace;
+type ProjectEvents = {
+  'build_status_changed': [],
+  'build_stdout': [string],
+  'build_stderr': [string],
+}
+
+export class Project extends EventEmitter<ProjectEvents> {
+
   private _configPath: AbsolutePath;
   private _taskTree: TaskTree<AbsolutePath>;
 
@@ -56,8 +62,8 @@ export class Project {
   private _stopTimestampMs?: number = Date.now();
   private _subprocess?: ChildProcess;
 
-  constructor(workspace: Workspace, taskTree: TaskTree<AbsolutePath>, configPath: AbsolutePath, nodeForkOptions?: NodeForkOptions) {
-    this._workspace = workspace;
+  constructor(taskTree: TaskTree<AbsolutePath>, configPath: AbsolutePath, nodeForkOptions?: NodeForkOptions) {
+    super();
     this._taskTree = taskTree;
     this._configPath = configPath;
     this._nodeForkOptions = nodeForkOptions;
@@ -102,10 +108,9 @@ export class Project {
       this._configurationError = result.error;
       if (this._configurationError) {
         this._output = this._configurationError;
-        this._workspace.emit('project_stderr', this, this._output);
+        this.emit('build_stderr', this._output);
       }
     }
-    this._workspace.emit('changed');
   }
 
   durationMs() {
@@ -211,14 +216,12 @@ export class Project {
 
   private _onStdOut(text: string) {
     this._output += text;
-    this._workspace.emit('project_stdout', this, text);
-    this._workspace.emit('changed');
+    this.emit('build_stdout', text);
   }
 
   private _onStdErr(text: string) {
     this._output += text;
-    this._workspace.emit('project_stderr', this, text);
-    this._workspace.emit('changed');
+    this.emit('build_stderr', text);
   }
 
   dispose() {
@@ -228,13 +231,12 @@ export class Project {
 }
 
 type WorkspaceEvents = {
-  'changed': [],
-  'workspace_error': [string],
-  'project_started': [Project],
-  'project_finished': [Project],
-  'project_stdout': [Project, string],
-  'project_stderr': [Project, string],
+  'workspace_status_changed': [],
+  'project_added': [Project],
+  'project_removed': [Project],
 }
+
+export type WorkspaceStatus = TaskTreeStatus | 'error';
 
 export class Workspace extends EventEmitter<WorkspaceEvents> {
   private _taskTree: TaskTree<AbsolutePath>;
@@ -252,20 +254,33 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       project?.requestBuild(options);    
     }, { jobs: this._options.jobs, });
 
+    this._taskTree.on('tree_status_changed', (status) => {
+      if (!this._workspaceError)
+        this.emit('workspace_status_changed');
+    });
     this._taskTree.on('task_started', (taskId) => {
-      this.emit('project_started', this._projects.get(taskId)!);
-      this.emit('changed');
+      const project = this._projects.get(taskId)!;
+      project.emit('build_status_changed');
     });
     this._taskTree.on('task_finished', (taskId) => {
-      this.emit('project_finished', this._projects.get(taskId)!)
-      this.emit('changed');
+      const project = this._projects.get(taskId)!;
+      project.emit('build_status_changed');
     });
-    this._taskTree.on('task_reset', () => this.emit('changed'));
+    this._taskTree.on('task_reset', (taskId) => {
+      const project = this._projects.get(taskId)!;
+      project.emit('build_status_changed');
+    });
 
     this._scheduleUpdate({ needsRereadConfigFiles: true });
   }
 
   options() { return this._options; }
+
+  workspaceStatus(): WorkspaceStatus {
+    if (this._workspaceError)
+      return 'error';
+    return this._taskTree.status();
+  }
 
   workspaceError() {
     return this._workspaceError;
@@ -330,6 +345,13 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     }
   }
 
+  private _setWorkspaceError(error?: string) {
+    if (error === this._workspaceError)
+      return;
+    this._workspaceError = error;
+    this.emit('workspace_status_changed');
+  }
+
   private async _readConfiguration() {
     let time = Date.now();
     const roots = this._options.roots.map(root => path.resolve(process.cwd(), root) as AbsolutePath);
@@ -343,12 +365,10 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
 
     const cycle = TaskTree.findDependencyCycle(projectTree);
     if (cycle) {
-      this._workspaceError = renderCycleError(cycle);
+      this._setWorkspaceError(renderCycleError(cycle));
       this._taskTree.clear();
-      this.emit('workspace_error', this._workspaceError);
-      this.emit('changed');
     } else {
-      this._workspaceError = undefined;
+      this._setWorkspaceError(undefined);
       this._taskTree.setTasks(projectTree);
     }
 
@@ -357,6 +377,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       if (!configs.has(projectId)) {
         project.dispose();
         this._projects.delete(projectId);
+        this.emit('project_removed', project);
       }
     }
 
@@ -364,8 +385,9 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     for (const config of configs.values()) {
       let project = this._projects.get(config.configPath);
       if (!project) {
-        project = new Project(this, this._taskTree, config.configPath, this._options.nodeOptions);
+        project = new Project(this._taskTree, config.configPath, this._options.nodeOptions);
         this._projects.set(config.configPath, project);
+        this.emit('project_added', project);
       }
       project.setConfiguration(config);
       if (this._options.watchMode) {
@@ -375,7 +397,5 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
         }));
       }
     }
-
-    this.emit('changed');
   }
 }

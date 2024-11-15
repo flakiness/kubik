@@ -7,7 +7,7 @@ import { Task } from 'kubik';
 
 const { __dirname, $ } = Task.init(import.meta, {
   name: 'kubik',
-  watch: [ '../src', '../package.json', '../tsconfig.json' ],
+  watch: [ '../src', '../package.json', '../tsconfig.json', '../tests' ],
 });
 
 const outDir = path.join(import.meta.dirname, '..', 'lib');
@@ -25,7 +25,7 @@ const { errors } = await esbuild.build({
   format: 'esm',
   platform: 'node',
   target: ['node22'],
-  sourcemap: false,
+  sourcemap: true,
   bundle: false,
   minify: false,
 });

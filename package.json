@@ -5,7 +5,7 @@
   "description": "",
   "main": "index.js",
   "bin": {
-    "kubik": "./lib/cli.js"
+    "kubik": "node --enable-sourcemaps ./lib/cli.js"
   },
   "repository": {
     "type": "git",

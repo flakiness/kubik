@@ -54,9 +54,10 @@ export class CycleError<TASK_ID extends string> extends Error {
 }
 
 export type TaskStatus = 'n/a'|'pending'|'running'|'ok'|'fail';
+export type TaskTreeStatus = 'ok'|'fail'|'pending'|'running';
 
 type TaskTreeEvents<TASK_ID extends string> = {
-  'completed': [],
+  'tree_status_changed': [TaskTreeStatus],
   'task_started': [TASK_ID],
   'task_finished': [TASK_ID],
   'task_reset': [TASK_ID],
@@ -115,16 +116,41 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
 
   private _tasks = new Map<TASK_ID, Task<TASK_ID>>();
   private _roots: Task<TASK_ID>[] = [];
-  private _lastCompleteTreeVersion: string = '';
+
+  private _status: TaskTreeStatus = 'ok';
   
   constructor(private _runCallback: (options: TaskOptions<TASK_ID>) => void, private _options: TaskTreeOptions) {
     super();
   }
 
+  private _computeTreeStatus() {
+    const tasks = [...this._tasks.values()];
+    const runnableTasks = tasks.filter(task => !task.execution && task.children.every(isSuccessfulCurrentTask));
+    const tasksBeingRun = tasks.filter(task => task.execution && task.execution.success === undefined);
+
+    if (runnableTasks.length === 0 && tasksBeingRun.length === 0) {
+      const hasFailedTasks = tasks.some(task => task.execution?.success === false);
+      this._setTreeStatus(hasFailedTasks ? 'fail' : 'ok');
+    } else {
+      this._setTreeStatus(tasksBeingRun.length > 0 ? 'running' : 'pending');
+    }
+  }
+
+  private _setTreeStatus(status: TaskTreeStatus) {
+    if (status !== this._status) {
+      this._status = status;
+      this.emit('tree_status_changed', status);
+    }
+  }
+
+  status(): TaskTreeStatus {
+    return this._status;
+  }
+
   taskStatus(taskId: TASK_ID): TaskStatus {
     const task = this._tasks.get(taskId);
     assert(task, `Cannot get status for non-existing node with id "${taskId}"`);
-    return !task.execution && this._computeTreeVersion() === this._lastCompleteTreeVersion ? 'n/a' :
+    return !task.execution && (this._status === 'ok' || this._status === 'fail') ? 'n/a' :
               !task.execution ? 'pending' :
               task.execution && task.execution.success === undefined ? 'running' :
               task.execution && task.execution.success ? 'ok' : 'fail';
@@ -133,6 +159,7 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
   resetAllTasks() {
     for (const node of this._tasks.values())
       this._resetTask(node);
+    this._computeTreeStatus();
   }
 
   clear() {
@@ -207,6 +234,8 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
     
     for (const root of this._roots)
       dfs(root);
+
+    this._computeTreeStatus();
   }
 
   topsort(): TASK_ID[] {
@@ -250,6 +279,7 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
         dfs(parent);
     }
     dfs(task);
+    this._computeTreeStatus();
   }
 
   private _runnableTasks(): Task<TASK_ID>[] {
@@ -258,10 +288,6 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
 
   private _tasksBeingRun(): Task<TASK_ID>[] {
     return [...this._tasks.values()].filter(task => task.execution && task.execution.success === undefined);
-  }
-
-  private _computeTreeVersion() {
-    return sha256(this._roots.map(taskVersion));
   }
 
   /**
@@ -274,18 +300,14 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
     const tasksBeingRun = this._tasksBeingRun();
     const runnableTasks = this._runnableTasks();
 
-    if (tasksBeingRun.length === 0 && runnableTasks.length === 0) {
-      const treeVersion = this._computeTreeVersion();
-      if (treeVersion !== this._lastCompleteTreeVersion) {
-        this._lastCompleteTreeVersion = treeVersion;
-        this.emit('completed');
-      }
+    const capacity = this._options.jobs - tasksBeingRun.length;
+    if (capacity <= 0 || !runnableTasks.length) {
+      this._computeTreeStatus();
       return;
     }
 
-    const capacity = this._options.jobs - tasksBeingRun.length;
-    if (capacity <= 0)
-      return;
+    // Update tree status pro-actively.
+    this._setTreeStatus('running');
 
     for (const task of runnableTasks.slice(0, capacity)) {
       task.execution = {
@@ -294,14 +316,14 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
       };
       const taskOptions: TaskOptions<TASK_ID> = {
         taskId: task.taskId,
-        onComplete: this._onTaskComplete.bind(this, task, task.execution.taskVersion),
-        signal: task.execution.abortController.signal,
+        onComplete: this._onTaskComplete.bind(this, task, task.execution!.taskVersion),
+        signal: task.execution!.abortController.signal,
       };
-      // Request building in a microtask to avoid reenterability.
-      Promise.resolve().then(() => {
-        this._runCallback.call(null, taskOptions)
-        this.emit('task_started', task.taskId);
-      });
+      // Emit "task_started" event before calling callback.
+      // This way, in case of synchronous callbacks, we will ensure
+      // a correct order fo task_started / task_finished events.
+      this.emit('task_started', task.taskId);
+      this._runCallback.call(null, taskOptions);
     }
   }
 
