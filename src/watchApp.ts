@@ -99,16 +99,17 @@ class ProjectView {
     this._layout.render();
   }
 
-  // This is called from layout's render.
-  public renderTitle() {
-    this._titleBox.setContent(renderProjectTitle(this._project, this.isFocused()));
-  }
-
   private _onStatusChanged() {
     // Scroll failed project output to top.
     if (this._project.status() === 'fail')
       this._contentBox.setScroll(0);
-    this._layout.render();
+    // When project changes status, it might refresh its output.
+    this._onStdIO();
+  }
+
+  // This is called from layout's render.
+  public renderTitle() {
+    this._titleBox.setContent(renderProjectTitle(this._project, this.isFocused()));
   }
 
   setHeight(height: number) {
@@ -326,8 +327,6 @@ class Layout {
       projectView.setTop(y);
       y += projectView.getHeight();
     }
-
-
 
     positions.map((position, index) => {
       const view = projectViews[index];
