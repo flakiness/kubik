@@ -16,14 +16,21 @@ async function bootstrapAssets(assetsFolder: string) {
   await fs.promises.cp(path.join(__dirname, assetsFolder), test.info().outputDir, {recursive: true});
 }
 
-function copyFile(from: string, to: string) {
+function cpAsset(from: string, to: string) {
   cpSync(test.info().outputPath(from), test.info().outputPath(to));  
 }
 
-async function onProjectAdded(workspace: Workspace, configSuffix: string): Promise<Project> {
+function touchAsset(asset: string) {
+  const fd = fs.openSync(test.info().outputPath(asset), 'w');
+  const now = new Date();
+  fs.futimesSync(fd, now, now)
+  fs.closeSync(fd);
+}
+
+async function onProjectAdded(workspace: Workspace, configSuffix?: string): Promise<Project> {
   return new Promise<Project>(resolve => {
     workspace.on('project_added', function listener(project: Project) {
-      if (project.configPath().endsWith(configSuffix)) {
+      if (!configSuffix || project.configPath().endsWith(configSuffix)) {
         workspace.removeListener('project_added', listener)
         resolve(project);
       }
@@ -134,7 +141,7 @@ workspaceTest('in watch mode, should detect cycle and clear the error once cycle
   await onWorkspaceStatus(workspace, 'error');
   expect(workspace.workspaceError()).toContain('cycle');
 
-  copyFile('d_fixed.mjs', 'd.mjs');
+  cpAsset('d_fixed.mjs', 'd.mjs');
   await onWorkspaceStatus(workspace, 'ok');
   expect(workspace.workspaceError()).toBe(undefined);
 });
@@ -160,4 +167,24 @@ workspaceTest('should report process exit code for services', async ({ createWor
   });
   const service = await onProjectAdded(workspace, 'service-that-fails.mjs');
   await onProjectOutput(service, 'process exited with code=7');
+});
+
+workspaceTest('should not have old output when event of status changed received', async ({ createWorkspace }) => {
+  await bootstrapAssets('no-deps');
+  const workspace = createWorkspace({
+    jobs: Infinity,
+    watchMode: true,
+    roots: [asset('fail.mjs')],
+  });
+  const project = await onProjectAdded(workspace);
+  await onProjectStatus(project, 'fail');
+  expect(project.output()).toContain('I am failing');
+
+  let output = project.output();
+  project.on('build_status_changed', () => output = project.output());
+
+  cpAsset('hang.mjs', 'fail.mjs');
+  await onProjectStatus(project, 'running');
+
+  expect(output).not.toContain('I am failing');
 });

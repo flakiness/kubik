@@ -67,6 +67,23 @@ export class Project extends EventEmitter<ProjectEvents> {
     this._taskTree = taskTree;
     this._configPath = configPath;
     this._nodeForkOptions = nodeForkOptions;
+
+    this._taskTree.on('task_started', (taskId) => {
+      if (taskId !== this._configPath)
+        return;
+      this.emit('build_status_changed');
+    });
+    this._taskTree.on('task_finished', (taskId) => {
+      if (taskId !== this._configPath)
+        return;
+      this.emit('build_status_changed');
+    });
+    this._taskTree.on('task_reset', (taskId) => {
+      if (taskId !== this._configPath)
+        return;
+      this._output = '';
+      this.emit('build_status_changed');
+    });
   }
 
   async startFileWatch(toWatch: AbsolutePath[], toIgnore: AbsolutePath[], onFilesChanged?: (project: Project, filePath: AbsolutePath) => void) {
@@ -143,7 +160,6 @@ export class Project extends EventEmitter<ProjectEvents> {
     this._killProcess();
 
     try {
-      this._output = '';
       this._startTimestampMs = Date.now();
       this._stopTimestampMs = undefined;
       const execArgv: string[] = [
@@ -226,8 +242,8 @@ export class Project extends EventEmitter<ProjectEvents> {
     this.emit('build_stderr', text);
   }
 
-  dispose() {
-    this.stopFileWatch();
+  async dispose() {
+    await this.stopFileWatch();
     this._killProcess();
   }
 }
@@ -259,18 +275,6 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     this._taskTree.on('tree_status_changed', (status) => {
       if (!this._workspaceError)
         this.emit('workspace_status_changed');
-    });
-    this._taskTree.on('task_started', (taskId) => {
-      const project = this._projects.get(taskId)!;
-      project.emit('build_status_changed');
-    });
-    this._taskTree.on('task_finished', (taskId) => {
-      const project = this._projects.get(taskId)!;
-      project.emit('build_status_changed');
-    });
-    this._taskTree.on('task_reset', (taskId) => {
-      const project = this._projects.get(taskId)!;
-      project.emit('build_status_changed');
     });
 
     this._scheduleUpdate({ needsRereadConfigFiles: true });
@@ -313,7 +317,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     clearTimeout(this._updateData?.timeout);
     this._taskTree.resetAllTasks();
     for (const project of this._projects.values())
-      project.dispose();
+      await project.dispose();
   }
 
   private async _doUpdate() {
@@ -377,7 +381,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     // Delete all projects that were removed.
     for (const [projectId, project] of this._projects) {
       if (!configs.has(projectId)) {
-        project.dispose();
+        await project.dispose();
         this._projects.delete(projectId);
         this.emit('project_removed', project);
       }
@@ -393,7 +397,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       }
       project.setConfiguration(config);
       if (this._options.watchMode) {
-        project.startFileWatch(config.config?.watch ?? [], config.config?.ignore ?? [], (project, filePath) => this._scheduleUpdate({
+        await project.startFileWatch(config.config?.watch ?? [], config.config?.ignore ?? [], (project, filePath) => this._scheduleUpdate({
           changedProject: project,
           needsRereadConfigFiles: filePath === project.configPath(),
         }));
