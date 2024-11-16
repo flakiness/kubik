@@ -34,7 +34,7 @@ function renderProjectTitle(project: Project, isFocused: boolean = false) {
   let filler = '─';
   if (isFocused) {
     filler = '■';
-    right = fillStyle(isFocused ? ' j, k, Space ' : '');
+    right = '';
   }
 
   const middle = ' ' + projectName + ' ';
@@ -83,6 +83,7 @@ class ProjectView {
       scrollable: true,
       alwaysScroll: true,
     });
+    this._contentBox.on('click', () => this.focus());
 
     parent.append(this._titleBox);
     parent.append(this._contentBox);
@@ -101,8 +102,13 @@ class ProjectView {
 
   private _onStatusChanged() {
     // Scroll failed project output to top.
-    if (this._project.status() === 'fail')
+    if (this._project.status() === 'fail') {
       this._contentBox.setScroll(0);
+      // If current focus is not a "failing" project, then focus the failing project.
+      if (this._layout.focusedProjectView()?.project().status() !== 'fail')
+        this.focus();
+    }
+
     // When project changes status, it might refresh its output.
     this._onStdIO();
   }
@@ -155,6 +161,7 @@ class ProjectView {
 
   focus() {
     this._contentBox.focus();
+    this._layout.render();
   }
 
   dispose() {
@@ -224,8 +231,6 @@ class Layout {
     workspace.on('project_added', project => {
       const view = new ProjectView(this, this._projectsContainer, project);
       this._projectToView.set(project, view);
-      if (this._projectToView.size === 1)
-        view.focus();
       this.render();
     });
 
@@ -241,8 +246,11 @@ class Layout {
     this._screen.key(['tab'], (ch, key) => this._moveFocus(1));
     this._screen.key(['S-tab'], (ch, key) => this._moveFocus(-1));
     this._screen.key(['escape', 'q', 'C-c'], (ch, key) => this.stop());
-
     this.render();
+  }
+
+  focusedProjectView(): ProjectView|undefined {
+    return [...this._projectToView.values()].find(view => view.isFocused());
   }
 
   private _moveFocus(direction: 1|-1) {
