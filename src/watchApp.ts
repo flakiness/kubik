@@ -45,7 +45,6 @@ function renderProjectTitle(project: Project, isFocused: boolean = false) {
 }
 
 class ProjectView {
-  private _parent: blessed.Widgets.BoxElement;
   private _titleBox: blessed.Widgets.BoxElement;
   private _contentBox: blessed.Widgets.BoxElement;
   private _height = 0;
@@ -54,7 +53,6 @@ class ProjectView {
 
   constructor(layout: Layout, parent: blessed.Widgets.BoxElement, project: Project) {
     this._layout = layout;
-    this._parent = parent;
     this._project = project;
     this._titleBox = blessed.box({
       top: 0,
@@ -62,14 +60,13 @@ class ProjectView {
       width: '100%',
       height: 1,
       tags: false,
-      focusable: true,
     });
 
     this._contentBox = blessed.box({
       top: 0,
       left: 0,
       width: '100%',
-      height: '50%',
+      height: '100%',
       content: '',
       scrollbar: {
         ch: ' ',
@@ -83,24 +80,8 @@ class ProjectView {
       keys: true, // Enable keyboard navigation
       vi: true, // Use vi-style keys for navigation
       mouse: true, // Enable mouse support for scrolling
-      _border: {
-        type: 'line',
-        left: true,
-        top: false,
-        right: false,
-        bottom: false
-      },
       scrollable: true,
       alwaysScroll: true,
-      tags: false,
-      _style: {
-        _focus: {
-          _border: {
-            fg: 'yellow',
-            type: 'line'
-          },
-        },
-      },
     });
 
     parent.append(this._titleBox);
@@ -112,12 +93,18 @@ class ProjectView {
   }
 
   private _onStdIO() {
+    const scroll = this.getScrollPosition();
     this._contentBox.setContent(this._project.output().trim());
+    this.setScrollPosition(scroll);
     this._layout.render();
   }
 
-  private _onStatusChanged() {
+  // This is called from layout's render.
+  public renderTitle() {
     this._titleBox.setContent(renderProjectTitle(this._project, this.isFocused()));
+  }
+
+  private _onStatusChanged() {
     // Scroll failed project output to top.
     if (this._project.status() === 'fail')
       this._contentBox.setScroll(0);
@@ -127,6 +114,20 @@ class ProjectView {
   setHeight(height: number) {
     this._height = height;
     this._contentBox.height = height - 1;
+  }
+
+  getScrollPosition() {
+    const isStickToBottom = this._project.status() !== 'fail' && (this._contentBox.getScrollHeight() <= this._height || this._contentBox.getScrollPerc() >= 100);
+    return isStickToBottom ? -1 : this._contentBox.getScroll();
+  }
+
+  setScrollPosition(position: number) {
+    this._contentBox.setScroll(0);
+    if (position === -1) {
+      this._contentBox.setScrollPerc(100);  
+    } else {
+      this._contentBox.setScroll(position);  
+    }
   }
 
   getHeight() { return this._height; }
@@ -143,30 +144,16 @@ class ProjectView {
     this._contentBox.top = y + 1;
   }
 
-  isStickToBottom() {
-    return this._project.status() !== 'fail' && this._contentBox.getScrollHeight() <= this._height || this._contentBox.getScrollPerc() === 100;
-  }
-
-  scrollToBottom() {
-    this._contentBox.setScrollPerc(100);
-  }
-
   project() {
     return this._project;
   }
 
-  focus() {
-    this._contentBox.focus();
-    if (this._project)
-      this._titleBox.setContent(renderProjectTitle(this._project, this.isFocused()));
-  }
-  
-  blur() {
-    this._titleBox.focus();
-  }
-
   isFocused() {
     return this._layout.screen().focused === this._contentBox;
+  }
+
+  focus() {
+    this._contentBox.focus();
   }
 
   dispose() {
@@ -176,8 +163,8 @@ class ProjectView {
 }
 
 let gDebug: ((...msg: string[]) => void)|undefined;
-export function dbgWatchApp(...msg: string[]) {
-  gDebug?.call(null, ...msg);
+export function dbgWatchApp(...msg: any[]) {
+  gDebug?.call(null, ...(msg.map(msg => String(msg))));
 }
 
 class Layout {
@@ -195,6 +182,7 @@ class Layout {
       smartCSR: false,
       terminal: 'tmux-256color',
       debug: true,
+      title: 'Tab Navigation Example',
     });
     this._projectsContainer = blessed.box({
       top: 0,
@@ -235,6 +223,8 @@ class Layout {
     workspace.on('project_added', project => {
       const view = new ProjectView(this, this._projectsContainer, project);
       this._projectToView.set(project, view);
+      if (this._projectToView.size === 1)
+        view.focus();
       this.render();
     });
 
@@ -247,34 +237,29 @@ class Layout {
 
     workspace.on('workspace_status_changed', () => this.render());
 
-    this._screen.key(['tab'], (ch, key) => {
-      this._screen.focusNext();
-      // const views = [...this._projectToView.values()];
-      // const focusedIndex = views.findIndex(view => view.isFocused());
-      // const newFocused = (focusedIndex + 1) % (views.length);
-      // if (focusedIndex !== -1)
-      //   views[focusedIndex].blur();
-      // views[newFocused].focus();
-      // this.render();
-    });
-
-    this._screen.key(['S-tab'], (ch, key) => {
-      this._screen.focusPrevious();
-      // const focusedIndex = this._projectToView.findIndex(view => view.isFocused());
-      // const newFocused = (focusedIndex - 1 + this._projectToView.length) % (this._projectToView.length);
-      // if (focusedIndex !== -1)
-      //   this._projectToView[focusedIndex].blur();
-      // this._projectToView[newFocused].focus();
-      // this.render();
-    });
-
-    // Quit on Escape, q, or Control-C.
-    this._screen.key(['escape', 'q', 'C-c'], (ch, key) => {
-      this._workspace.stop();
-      this._screen.destroy();
-    });
+    this._screen.key(['tab'], (ch, key) => this._moveFocus(1));
+    this._screen.key(['S-tab'], (ch, key) => this._moveFocus(-1));
+    this._screen.key(['escape', 'q', 'C-c'], (ch, key) => this.stop());
 
     this.render();
+  }
+
+  private _moveFocus(direction: 1|-1) {
+    const views = this._sortedProjectsViews();
+    const focusedIndex = views.findIndex(view => view.isFocused());
+    const newFocused = (focusedIndex + direction + views.length) % (views.length);
+    views[newFocused].focus();
+    this.render();
+  }
+
+  stop() {
+    this._workspace.stop();
+    this._screen.destroy();
+  }
+
+  debugAndExit(...args: any) {
+    this.stop();
+    console.log(...args);
   }
 
   screen() { return this._screen; }
@@ -285,13 +270,28 @@ class Layout {
     this._renderTimeout = setTimeout(this._doRender.bind(this), 0);
   }
 
+  private _sortedProjectsViews() {
+    const projects = this._workspace.topsortProjects();
+    return projects.map(project => this._projectToView.get(project)!);
+  }
+
   private _doRender() {
     this._renderTimeout = undefined;
 
-    const projects = this._workspace.topsortProjects();
-    const projectViews = projects.map(project => this._projectToView.get(project)!);
+    const workspaceError = this._workspace.workspaceError();
+    if (workspaceError) {
+      this._errorView.setContent(workspaceError);
+      this._errorView.show();
+    } else {
+      this._errorView.hide();
+    }
 
-    const stickedToBottom = new Set<ProjectView>(projectViews.filter(view => view.isStickToBottom()));
+    const projectViews = this._sortedProjectsViews();
+    
+    for (const projectView of projectViews)
+      projectView.renderTitle();
+
+    const positions = projectViews.map(view => view.getScrollPosition());
 
     // do layout
     const height = process.stdout.rows;
@@ -327,18 +327,12 @@ class Layout {
       y += projectView.getHeight();
     }
 
-    for (const view of stickedToBottom) {
-      if (view.project()?.status() !== 'fail')
-        view.scrollToBottom();
-    }
 
-    const workspaceError = this._workspace.workspaceError();
-    if (workspaceError) {
-      this._errorView.setContent(workspaceError);
-      this._errorView.show();
-    } else {
-      this._errorView.hide();
-    }
+
+    positions.map((position, index) => {
+      const view = projectViews[index];
+      view.setScrollPosition(position);
+    });
 
     this._screen.render();
   }
