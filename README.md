@@ -20,102 +20,62 @@ Kubik supports running tasks with different parallelization modes and has a buil
 
 ## Quick Start
 
-A template script `build.mjs` to build typescript with esbuild and lint its types with `tsc`: 
+Any `build.(m)js` script can be converted to a task by importing `Task` and running `Task.init` in the
+very beginning of the script:
 
 ```ts
-#!/usr/bin/env npx kubik
-
-import path from 'path';
-import esbuild from 'esbuild';
-import fs from 'fs';
 import { Task } from 'kubik';
 
-const { __dirname, $ } = Task.init(import.meta, {
-  name: 'build & lint',
-  watch: [ './src' ],
-});
+Task.init(import.meta);
 
-const outDir = path.join(__dirname, 'lib');
-const srcDir = path.join(__dirname, 'src');
-const typesDir = path.join(__dirname, 'types');
-await fs.promises.rm(outDir, { recursive: true }).catch(e => void e);
-await fs.promises.rm(typesDir, { recursive: true }).catch(e => void e);
-
-const { errors } = await esbuild.build({
-  color: true,
-  entryPoints: [
-    path.join(srcDir, '**/*.ts'),
-  ],
-  outdir: outDir,
-  format: 'esm',
-  platform: 'node',
-  target: ['node22'],
-  sourcemap: false,
-  bundle: false,
-  minify: false,
-});
-
-if (!errors.length)
-  await $`tsc --pretty -p .`;
+/* ... build script ...  */
 ```
 
-Commands:
-* Build: `./build.mjs` or `npx kubik ./build.mjs`
-* Watch mode: `./build.mjs -w` or `npx kubik -w ./build.mjs`
-* Debug (run without Kubik): `node build.mjs`
-* Run sequential build: `./build.mjs -j 1` or `npx kubik -j 1 ./build.mjs`
+The `Task.init` method accepts configuration (dependencies & watch mode configuration), see 
+[API](#api) section.
 
-## Getting Started
+Use the following commands to run tasks:
+* Build: `npx kubik ./build.mjs`
+* Watch mode: `npx kubik -w ./build.mjs`
+* Debug (run without Kubik): `node build.mjs` or `tsx build.mjs`
+* Run sequential build: `npx kubik -j 1 ./build.mjs`
 
-Let's say you have a simple build script:
+A real-life example is [available here](https://github.com/flakiness/kubik/blob/main/bootstrap/build.mjs).
 
-```js
-// build-main.mjs
+## Task dependencies
 
-console.log('Building main library...');
-await new Promise(x => setTimeout(x, 1000));
-console.log('Done.')
-```
-
-And you want to run this script after building some dependency, which has its own script:
-
-```js
-// build-third-party.mjs
-console.log('Copied third-party!');
-```
-
-You can use Kubik to declare dependencies in both scripts, using `Task.init` method
-at the **very beginning** of your script:
+Kubik allows defining dependencies between tasks using `deps` option in the `Task.init` method:
 
 ```js
 // build-main.mjs
 import { Task } from 'kubik';
 
 Task.init(import.meta, {
-  deps: ['./build-third-party.mjs'], // these are relative to script folder
+  deps: ['./other-task.mjs'], // these are relative to script folder
 });
 
-console.log('Building main library...');
-await new Promise(x => setTimeout(x, 1000));
-console.log('Done.')
+// ... run some tasks
 ```
 
-```js
-// build-third-party.mjs
-import { Task } from 'kubik';
-
-Task.init(import.meta);
-
-console.log('Copied third-party!');
-```
-
-Now to build dependencies, you can simply execute the first script with Kubik:
+To run tasks with their dependencies to completion, run:
 
 ```bash
 npx kubik ./build-main.mjs
 ```
 
-## Tasks vs Services
+## Multiple roots
+
+In a complicated projects, it might be necessary to build a project from multiple entry points.
+In this case, you can pass multiple entry points to Kubik:
+
+```bash
+npx kubik ./build-main.mjs ./build-other.mjs
+```
+
+In this case, if both `build-main.mjs` and `build-other.mjs` depend on `shared.mjs` task, then
+the task will be executed only once.
+
+## Running services
 
 By default, task is considered successful if its process completes with 0 exit code, and
 unsuccessful if it fails with non-zero code.
@@ -129,9 +89,8 @@ import { Task } from 'kubik';
 
 Task.init(import.meta);
 
-// setInterval will keep node.js process from exiting.
-setInterval(() => console.log(Date.now()), 150);
-// This is how Kubik will know that this task is "done".
+// ...launch HTTP server... 
+// Report the task as complete.
 Task.done();
 ```
 
