@@ -120,17 +120,17 @@ export function killProcessTree(childProcess: ChildProcess, signal: 'SIGINT' | '
   }
 }
 
-export async function spawnAsync(cmd: string, args: string[], options: SpawnOptionsWithoutStdio): Promise<{ code: number, stdout: string, stderr: string }> {
+export async function spawnAsync(cmd: string, args: string[], options: SpawnOptionsWithoutStdio): Promise<{ code: number, stdio: string, stdout: string, stderr: string }> {
   return await new Promise((resolve, reject) => {
     const subprocess = spawn(cmd, args, {
       ...options,
       stdio: 'pipe',
       windowsHide: true,
     });
-    let stdout = '', stderr = '';
-    subprocess.stdout.on('data', data => stdout += data);
-    subprocess.stderr.on('data', data => stderr += data);
-    subprocess.on('close', code => resolve({ code: code as number, stdout, stderr }));
+    let stdout = '', stderr = '', stdio = '';
+    subprocess.stdout.on('data', data => { stdout += data; stdio += data; });
+    subprocess.stderr.on('data', data => { stderr += data; stdio += data; });
+    subprocess.on('close', code => resolve({ code: code as number, stdout, stderr, stdio }));
     subprocess.on('error', error => reject(error));
   });
 }

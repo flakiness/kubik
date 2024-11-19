@@ -2,12 +2,15 @@
 
 > ⚠️ **Warning:** Kubik is currently in pre-1.0.0 release. Expect potential changes and experimental features that may not be fully stable yet.
 
-**Kubik** is a simple task runner for node.js, designed specifically to build typescript monorepos.
-Kubik uses `.js`/`.mjs` scripts to define tasks.
+**Kubik** is a simple task runner for node.js with first-class TypeScript support.
+
+Kubik tasks are defined by TypeScript / Node.js scripts, with dependencies to other tasks.
+Kubik supports running tasks with different parallelization modes and has a built-in watch mode.
 
 * [Quick Start](#quick-start)
 * [Getting Started](#getting-started)
 * [Tasks vs Services](#tasks-vs-services)
+* [Typescript](#typescript)
 * [Watch Mode](#watch-mode)
 * [Parallelization](#watch-mode)
 * [Shebang](#shebang-usage)
@@ -130,6 +133,36 @@ setInterval(() => console.log(Date.now()), 150);
 // This is how Kubik will know that this task is "done".
 Task.done();
 ```
+
+## TypeScript support
+
+Kubik supports running tasks defined in a `.ts` / `.mts` files using [tsx](https://github.com/privatenumber/tsx). To use typescript, simply install `tsx` along side with kubik, 
+and use `.ts`/`.tsx` extension to write your scripts:
+
+1. Install `tsx`:
+
+    ```sh
+    npm i --save-dev tsx
+    ```
+
+1. Write your scripts in a `.ts` or `.mts` files:
+
+    ```ts
+    // hello.ts
+
+    import { Task } from 'kubik';
+
+    Task.init(import.meta);
+    const foo: String = 'Hello, typescript!';
+    console.log(foo);
+    ```
+
+1. Run your tasks as usual:
+
+    ```sh
+    npx kubik ./hello.ts
+    ```
+
 
 ## Watch Mode
 

@@ -47,14 +47,21 @@ async function readSingleConfig(configPath: AbsolutePath): Promise<ReadConfigRes
     return { configPath, error: `Failed to load configuration - path ${path.relative(process.cwd(), configPath)} does not exist`};
   }
   // We have to load config in a sub-process to bust require cache.
-  const { code, stdout } = await spawnAsync(process.execPath, [configPath], {
+  const args: string[] = [];
+  if (configPath.endsWith('.ts') || configPath.endsWith('.mts'))
+    args.push(`--import=tsx`);
+
+  const { code, stdout, stderr, stdio } = await spawnAsync(process.execPath, [...args, configPath], {
     env: {
       ...process.env,
       KUBIK_DUMP_CONFIGURATION: '1',
     }
   });
-  if (code !== 0)
-    return { configPath, error: 'failed to load configuration\n' + stdout};
+  if (code !== 0) {
+    if (stderr.includes('ERR_MODULE_NOT_FOUND') && stderr.includes('tsx'))
+      return { configPath, error: 'failed to load configuration: please install TSX to run .ts/.mts scripts: \n    npm i -D tsx'};  
+    return { configPath, error: 'failed to load configuration\n' + stdio};
+  }
   try {
     let { name, watch = [], ignore = [], deps = [] } = JSON.parse(stdout) as TaskOptions;
     if (!Array.isArray(watch))

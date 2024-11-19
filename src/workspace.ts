@@ -165,6 +165,8 @@ export class Project extends EventEmitter<ProjectEvents> {
       const execArgv: string[] = [
         '--enable-source-maps',
       ];
+      if (this._configPath.endsWith('.ts') || this._configPath.endsWith('.mts'))
+        execArgv.push(`--import=tsx`);
       if (this._nodeForkOptions?.envFile)
         execArgv.push(`--env-file=${this._nodeForkOptions.envFile}`);
       const env: Record<string, string|undefined> = {
