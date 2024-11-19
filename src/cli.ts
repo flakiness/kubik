@@ -12,7 +12,7 @@ program
   .description('Start build')
   .addOption(new Option(`-j, --jobs <number>`, `Allow N jobs at once; infinite jobs with no arg.`).argParser(parseInt))
   .option('-w, --watch', 'Watch files for changes')
-  .option('--env-file <env file>', 'Use environment file for all tasks')
+  .option('-e, --env-file <env file>', 'Use environment file for all tasks')
   .arguments('<files...>')
   .action((files: string[], options: { jobs?: number, envFile?: string, watch?: boolean }) => {
     const roots = files.map(file => path.resolve(process.cwd(), file)) as AbsolutePath[];

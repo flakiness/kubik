@@ -10,9 +10,10 @@ Kubik supports running tasks with different parallelization modes and has a buil
 * [Quick Start](#quick-start)
 * [Getting Started](#getting-started)
 * [Tasks vs Services](#tasks-vs-services)
-* [Typescript](#typescript)
+* [Typescript Support](#typescript-support)
 * [Watch Mode](#watch-mode)
 * [Parallelization](#watch-mode)
+* [Environment Files](#environment-files)
 * [Shebang](#shebang-usage)
 * [API](#api)
 * [Debugging](#debugging)
@@ -211,6 +212,16 @@ Task.init(import.meta, {
 ## Parallelization
 
 Kubik supports `-j, --jobs <number>` flag to customize number of parallel jobs. By default, Kubik allows an unlimited number of parallel jobs.
+
+## Environment Files
+
+Kubik supports `-e, --env-file <env file>` flag to load environment variables from a file.
+
+```bash
+npx kubik -e .env ./build.mjs
+```
+
+This will load all the environment variables from `.env` file, and pass them to all scripts.
 
 ## Shebang
 
