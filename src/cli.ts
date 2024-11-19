@@ -64,6 +64,8 @@ function cliLogger(workspace: Workspace) {
     if (workspace.workspaceStatus() === 'error') {
       console.error(workspace.workspaceError());
       process.exitCode = 1;
+    } else if (workspace.workspaceStatus() === 'fail') {
+      process.exitCode = 1;
     }
   });
 }
