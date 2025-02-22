@@ -64,6 +64,7 @@ export class Project extends EventEmitter<ProjectEvents> {
 
   constructor(taskTree: TaskTree<AbsolutePath>, configPath: AbsolutePath, nodeForkOptions?: NodeForkOptions) {
     super();
+    this.setMaxListeners(Infinity);
     this._taskTree = taskTree;
     this._configPath = configPath;
     this._nodeForkOptions = nodeForkOptions;
@@ -268,6 +269,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
 
   constructor(private _options: WorkspaceOptions) {
     super();
+    this.setMaxListeners(Infinity);
 
     this._taskTree = new TaskTree<AbsolutePath>(options => {
       const project = this._projects.get(options.taskId);

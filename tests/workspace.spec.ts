@@ -117,7 +117,8 @@ workspaceTest('should work', async ({ createWorkspace }) => {
   await onProjectStatus(project, 'ok');
   const projects = workspace.topsortProjects();
   expect(projects[0].output().trim()).toBe('done - b.mjs')
-  expect(projects[1].output().trim()).toBe('done - a.mjs')
+  expect(projects[1].output().trim()).toBe('done - c.mjs')
+  expect(projects[2].output().trim()).toBe('done - a.mjs')
 });
 
 workspaceTest('should detect cycle', async ({ createWorkspace }) => {

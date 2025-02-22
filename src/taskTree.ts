@@ -118,9 +118,10 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
   private _roots: Task<TASK_ID>[] = [];
 
   private _status: TaskTreeStatus = 'ok';
-  
+
   constructor(private _runCallback: (options: TaskOptions<TASK_ID>) => void, private _options: TaskTreeOptions) {
     super();
+    this.setMaxListeners(Infinity);
   }
 
   private _computeTreeStatus() {
