@@ -8,7 +8,7 @@
     "outDir": "./types",
     "noEmit": false,
     "rootDir": ".",
-
+    "jsx": "react",
     "allowJs": true,
     "checkJs": true,
     "strict": true,
