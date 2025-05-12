@@ -144,6 +144,10 @@ export class Project extends EventEmitter<ProjectEvents> {
     return this._taskTree.taskStatus(this._configPath);
   }
 
+  id() {
+    return this._configPath;
+  }
+
   output(): string {
     return this._configurationError ?? this._output;
   }
@@ -255,6 +259,7 @@ type WorkspaceEvents = {
   'workspace_status_changed': [],
   'project_added': [Project],
   'project_removed': [Project],
+  'projects_changed': [],
 }
 
 export type WorkspaceStatus = TaskTreeStatus | 'error';
@@ -382,11 +387,14 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       this._taskTree.setTasks(projectTree);
     }
 
+    let hasProjectChanges = false;
+
     // Delete all projects that were removed.
     for (const [projectId, project] of this._projects) {
       if (!configs.has(projectId)) {
         await project.dispose();
         this._projects.delete(projectId);
+        hasProjectChanges = true;
         this.emit('project_removed', project);
       }
     }
@@ -397,6 +405,7 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       if (!project) {
         project = new Project(this._taskTree, config.configPath, this._options.nodeOptions);
         this._projects.set(config.configPath, project);
+        hasProjectChanges = true;
         this.emit('project_added', project);
       }
       project.setConfiguration(config);
@@ -407,5 +416,8 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
         }));
       }
     }
+
+    if (hasProjectChanges)
+      this.emit('projects_changed');
   }
 }
