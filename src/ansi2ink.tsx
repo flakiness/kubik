@@ -14,7 +14,7 @@
   limitations under the License.
 */
 
-import { Text } from 'ink';
+import { Newline, Text } from 'ink';
 import React, { JSX } from 'react';
 
 // Standard ANSI color names that INK/Chalk understands
@@ -58,21 +58,29 @@ const inkAnsiBackgroundColors: { [code: number]: string } = {
   107: 'whiteBright',
 };
 
-export function ansi2ink(text: string, defaultColors?: { bg: string, fg: string }): JSX.Element {
-  const regex = /(\x1b\[(\d+(;\d+)*)m)|([^\x1b]+)/g;
-  const tokens: JSX.Element[] = [];
-  let match;
-  let style: {
-    'font-weight'?: 'bold',
-    'opacity'?: string,
-    'font-style'?: 'italic',
-    'text-decoration'?: 'underline' | 'line-through' | 'overline',
-    'display'?: 'none',
-    'color'?: string,
-    'background-color'?: string,
-  } = {};
+type ANSIStyle = {
+  'font-weight'?: 'bold',
+  'opacity'?: string,
+  'font-style'?: 'italic',
+  'text-decoration'?: 'underline' | 'line-through' | 'overline',
+  'display'?: 'none',
+  'color'?: string,
+  'background-color'?: string,
+};
 
-  let reverse = false;
+type ParsedToken = {
+  text: string,
+  style: ANSIStyle,
+};
+
+function parseAnsiText(text: string, defaultColors?: { bg: string, fg: string }): ParsedToken[] {
+  const regex = /(\x1b\[(\d+(;\d+)*)m)|([^\x1b]+)/g;
+  const result: ParsedToken[] = [];
+
+  let match;
+  let style: ANSIStyle = {};
+
+  let reverseColors = false;
   let fg: string | undefined = defaultColors?.fg;
   let bg: string | undefined = defaultColors?.bg;
 
@@ -87,7 +95,7 @@ export function ansi2ink(text: string, defaultColors?: { bg: string, fg: string 
         case 3: style['font-style'] = 'italic'; break;
         case 4: style['text-decoration'] = 'underline'; break;
         case 7:
-          reverse = true;
+          reverseColors = true;
           break;
         case 8: style['display'] = 'none'; break;
         case 9: style['text-decoration'] = 'line-through'; break;
@@ -106,7 +114,7 @@ export function ansi2ink(text: string, defaultColors?: { bg: string, fg: string 
           delete style['text-decoration'];
           break;
         case 27:
-          reverse = false;
+          reverseColors = false;
           break;
         case 30:
         case 31:
@@ -158,27 +166,66 @@ export function ansi2ink(text: string, defaultColors?: { bg: string, fg: string 
       }
     } else if (text && style.display !== 'none') {
       const styleCopy = { ...style };
-      const color = reverse ? bg : fg;
+      const color = reverseColors ? bg : fg;
       if (color !== undefined)
         styleCopy['color'] = color;
-      const backgroundColor = reverse ? fg : bg;
+      const backgroundColor = reverseColors ? fg : bg;
       if (backgroundColor !== undefined)
         styleCopy['background-color'] = backgroundColor;
-
-      tokens.push(
-        <Text
-          bold={styleCopy['font-weight'] === 'bold'}
-          backgroundColor={styleCopy['background-color']}
-          color={styleCopy['color']}
-          dimColor={!!styleCopy['opacity']}
-          italic={styleCopy['font-style'] === 'italic'}
-          strikethrough={styleCopy['text-decoration'] === 'line-through'}
-          underline={styleCopy['text-decoration'] === 'underline'}
-        >{text}</Text>
-      );
+      result.push({ text, style: styleCopy });
     }
   }
-  return (
-    <Text>{tokens}</Text>
-  );
+  return result;
+}
+
+function renderToInk(parsedText: ParsedToken[], lineWidth: number): JSX.Element[] {
+  const result: JSX.Element[] = [];
+  let currentLineText = '';
+  let currentLine: JSX.Element[] = [];
+
+  const flushCurrentLine = () => {
+    result.push(<Text>{currentLine}<Newline/></Text>)
+    currentLine = [];
+    currentLineText = '';
+  }
+
+  const pushToLine = (text: string, style: ANSIStyle) => {
+    currentLine.push(
+      <Text
+        bold={style['font-weight'] === 'bold'}
+        backgroundColor={style['background-color']}
+        color={style['color']}
+        dimColor={!!style['opacity']}
+        italic={style['font-style'] === 'italic'}
+        strikethrough={style['text-decoration'] === 'line-through'}
+        underline={style['text-decoration'] === 'underline'}
+      >{text}</Text>
+    );
+    currentLineText += text;
+    if (currentLineText.length >= lineWidth)
+      flushCurrentLine();
+  }
+
+  for (const { text, style } of parsedText) {
+    const tokenLines = text.split('\n');
+    for (let lineIdx = 0; lineIdx < tokenLines.length; ++lineIdx) {
+      if (lineIdx > 0 && currentLineText)
+        flushCurrentLine();
+      let line = tokenLines[lineIdx];
+      // Handle line wrapping
+      while (line) {
+        let toEat = Math.min(lineWidth - currentLineText.length, line.length);
+        pushToLine(line.substring(0, toEat), style);
+        line = line.substring(toEat);
+      }
+    }
+  }
+  if (currentLineText)
+    flushCurrentLine();
+  return result;
+}
+
+export function ansi2ink(text: string, lineWidth: number, defaultColors?: { bg: string, fg: string }): JSX.Element[] {
+  const parsed = parseAnsiText(text, defaultColors);
+  return renderToInk(parsed, lineWidth);
 }
