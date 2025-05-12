@@ -59,13 +59,15 @@ const inkAnsiBackgroundColors: { [code: number]: string } = {
 };
 
 type ANSIStyle = {
-  'font-weight'?: 'bold',
-  'opacity'?: string,
-  'font-style'?: 'italic',
-  'text-decoration'?: 'underline' | 'line-through' | 'overline',
-  'display'?: 'none',
-  'color'?: string,
-  'background-color'?: string,
+  bold?: boolean,
+  dim?: boolean,
+  italic?: boolean,
+  underline?: boolean,
+  strikethrough?: boolean,
+  hidden?: boolean,
+  fgColor?: string,
+  bgColor?: string,
+  inverseColors?: boolean,
 };
 
 type ParsedToken = {
@@ -73,48 +75,42 @@ type ParsedToken = {
   style: ANSIStyle,
 };
 
-function parseAnsiText(text: string, defaultColors?: { bg: string, fg: string }): ParsedToken[] {
+function parseAnsiText(text: string): ParsedToken[] {
   const regex = /(\x1b\[(\d+(;\d+)*)m)|([^\x1b]+)/g;
   const result: ParsedToken[] = [];
 
   let match;
   let style: ANSIStyle = {};
 
-  let reverseColors = false;
-  let fg: string | undefined = defaultColors?.fg;
-  let bg: string | undefined = defaultColors?.bg;
-
   while ((match = regex.exec(text)) !== null) {
     const [, , codeStr, , text] = match;
     if (codeStr) {
       const code = +codeStr;
       switch (code) {
-        case 0: style = {}; break;
-        case 1: style['font-weight'] = 'bold'; break;
-        case 2: style['opacity'] = '0.8'; break;
-        case 3: style['font-style'] = 'italic'; break;
-        case 4: style['text-decoration'] = 'underline'; break;
-        case 7:
-          reverseColors = true;
+        case 0:
+          style = {};
           break;
-        case 8: style['display'] = 'none'; break;
-        case 9: style['text-decoration'] = 'line-through'; break;
+        case 1: style.bold = true; break;
+        case 2: style.dim = true; break;
+        case 3: style.italic = true; break;
+        case 4: style.underline = true; break;
+        case 7:
+          style.inverseColors = true;
+          break;
+        case 8: style.hidden = true; break;
+        case 9: style.strikethrough = true; break;
         case 22:
-          delete style['font-weight'];
-          delete style['font-style'];
-          delete style['opacity'];
-          delete style['text-decoration'];
+          style.dim = false;
+          style.bold = false;
           break;
         case 23:
-          delete style['font-weight'];
-          delete style['font-style'];
-          delete style['opacity'];
+          style.italic = false;
           break;
         case 24:
-          delete style['text-decoration'];
+          style.underline = false;
           break;
         case 27:
-          reverseColors = false;
+          style.inverseColors = false;
           break;
         case 30:
         case 31:
@@ -124,10 +120,10 @@ function parseAnsiText(text: string, defaultColors?: { bg: string, fg: string })
         case 35:
         case 36:
         case 37:
-          fg = inkAnsiColors[code];
+          style.fgColor = inkAnsiColors[code];
           break;
         case 39:
-          fg = defaultColors?.fg;
+          delete style.fgColor;
           break;
         case 40:
         case 41:
@@ -137,12 +133,14 @@ function parseAnsiText(text: string, defaultColors?: { bg: string, fg: string })
         case 45:
         case 46:
         case 47:
-          bg = inkAnsiBackgroundColors[code];
+          style.bgColor = inkAnsiBackgroundColors[code];
           break;
         case 49:
-          bg = defaultColors?.bg;
+          delete style.bgColor;
           break;
-        case 53: style['text-decoration'] = 'overline'; break;
+        case 53:
+          // overline; not supported.
+          break;
         case 90:
         case 91:
         case 92:
@@ -151,7 +149,7 @@ function parseAnsiText(text: string, defaultColors?: { bg: string, fg: string })
         case 95:
         case 96:
         case 97:
-          fg = inkAnsiColors[code];
+          style.fgColor = inkAnsiColors[code];
           break;
         case 100:
         case 101:
@@ -161,18 +159,14 @@ function parseAnsiText(text: string, defaultColors?: { bg: string, fg: string })
         case 105:
         case 106:
         case 107:
-          bg = inkAnsiBackgroundColors[code];
+          style.bgColor = inkAnsiBackgroundColors[code];
           break;
       }
-    } else if (text && style.display !== 'none') {
-      const styleCopy = { ...style };
-      const color = reverseColors ? bg : fg;
-      if (color !== undefined)
-        styleCopy['color'] = color;
-      const backgroundColor = reverseColors ? fg : bg;
-      if (backgroundColor !== undefined)
-        styleCopy['background-color'] = backgroundColor;
-      result.push({ text, style: styleCopy });
+    } else if (text && !style.hidden) {
+      result.push({
+        text: stripAnsi(text),
+        style: { ...style, }
+      });
     }
   }
   return result;
@@ -184,7 +178,7 @@ function renderToInk(parsedText: ParsedToken[], lineWidth: number): JSX.Element[
   let currentLine: JSX.Element[] = [];
 
   const flushCurrentLine = () => {
-    result.push(<Text>{currentLine}<Newline/></Text>)
+    result.push(<Text key={result.length + ''}>{currentLine}<Newline/></Text>)
     currentLine = [];
     currentLineText = '';
   }
@@ -192,13 +186,14 @@ function renderToInk(parsedText: ParsedToken[], lineWidth: number): JSX.Element[
   const pushToLine = (text: string, style: ANSIStyle) => {
     currentLine.push(
       <Text
-        bold={style['font-weight'] === 'bold'}
-        backgroundColor={style['background-color']}
-        color={style['color']}
-        dimColor={!!style['opacity']}
-        italic={style['font-style'] === 'italic'}
-        strikethrough={style['text-decoration'] === 'line-through'}
-        underline={style['text-decoration'] === 'underline'}
+        bold={style.bold}
+        color={style.fgColor}
+        backgroundColor={style.bgColor}
+        inverse={style.inverseColors}
+        dimColor={style.dim}
+        italic={style.italic}
+        strikethrough={style.strikethrough}
+        underline={style.underline}
       >{text}</Text>
     );
     currentLineText += text;
@@ -207,7 +202,7 @@ function renderToInk(parsedText: ParsedToken[], lineWidth: number): JSX.Element[
   }
 
   for (const { text, style } of parsedText) {
-    const tokenLines = text.split('\n');
+    const tokenLines = text.replaceAll('\t', '       ').split('\n');
     for (let lineIdx = 0; lineIdx < tokenLines.length; ++lineIdx) {
       if (lineIdx > 0 && currentLineText)
         flushCurrentLine();
@@ -226,6 +221,11 @@ function renderToInk(parsedText: ParsedToken[], lineWidth: number): JSX.Element[
 }
 
 export function ansi2ink(text: string, lineWidth: number, defaultColors?: { bg: string, fg: string }): JSX.Element[] {
-  const parsed = parseAnsiText(text, defaultColors);
+  const parsed = parseAnsiText(text);
   return renderToInk(parsed, lineWidth);
+}
+
+const ansiRegex = new RegExp('[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))', 'g');
+function stripAnsi(str: string): string {
+  return str.replace(ansiRegex, '');
 }

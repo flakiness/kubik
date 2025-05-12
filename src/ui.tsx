@@ -1,6 +1,5 @@
 import chalk from 'chalk'; // For easily generating ANSI sequences in the mock data
-import { withFullScreen } from 'fullscreen-ink';
-import { Box, Text, useApp, useInput, useStdout } from 'ink';
+import { Box, render, Text, useApp, useInput, useStdout } from 'ink';
 import React, { JSX, useEffect, useState } from 'react';
 import { ansi2ink } from './ansi2ink.js';
 import { TaskStatus } from './taskTree.js';
@@ -95,7 +94,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   // -2 for left border + scrollbar
   const allLines = ansi2ink(selectedProject?.output() ?? '', outputWidth - 2);
 
-  const firstVisibleLineIndex = projectScroll ?? allLines.length - projectOutputHeight;
+  const firstVisibleLineIndex = projectScroll ?? Math.max(allLines.length - projectOutputHeight, 0);
   const lines = allLines.slice(firstVisibleLineIndex, firstVisibleLineIndex + projectOutputHeight);
 
   const offset = allLines.length < projectOutputHeight ? 0 : (firstVisibleLineIndex / (allLines.length - projectOutputHeight));
@@ -114,7 +113,6 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   useInput((input, key) => {
     if (input === 'q' || (key.ctrl && input === 'c')) {
       exit();
-      workspace.stop();
       return;
     }
 
@@ -161,7 +159,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   });
 
   return (
-    <Box flexDirection="row" width="100%" height="100%">
+    <Box flexDirection="row" width={terminalWidth} height={terminalHeight}>
       <Box
         borderStyle="single"
         borderColor={focusedPane === 'left' ? 'lightgray' : 'gray'}
@@ -173,7 +171,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
       >
         <Text bold underline>Tasks</Text>
         {projects.map((project, index) => (
-          <Box flexDirection='row' gap={1}>
+          <Box flexDirection='row' gap={1} key={index}>
             <Text>{getStatusIndicator(project.status())}</Text>
             <Text
               color={getStatusColor(project.status())}
@@ -209,9 +207,20 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
 };
 
 export function startWatchApp(workspace: Workspace) {
+  // Enter alternative buffer.
+  process.stdout.write('\x1b[?1049h');
+  const instance = render(<App workspace={workspace}/>, {
+    exitOnCtrlC: true,
+  });
+  instance.waitUntilExit().then(() => {
+    process.stdout.write('\x1b[?1049l');
+    workspace.stop();
+  });
+  /*
   withFullScreen(<App workspace={workspace}/>, {
     exitOnCtrlC: true,
   }).start();  
+  */
 }
 
 
