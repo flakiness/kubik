@@ -6,7 +6,6 @@ import { AbsolutePath, ReadConfigResult, readConfigTree, toAbsolutePath } from "
 import { Multimap } from "./multimap.js";
 import { killProcessTree } from "./process_utils.js";
 import { TaskOptions, TaskTree, TaskTreeStatus } from "./taskTree.js";
-import { dbgWatchApp } from "./watchApp.js";
 
 type UpdateData = {
   timeout: NodeJS.Timeout,
@@ -371,7 +370,6 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     let time = Date.now();
     const roots = this._options.roots.map(root => path.resolve(process.cwd(), root) as AbsolutePath);
     const configs = await readConfigTree(roots);
-    dbgWatchApp(`reading configs:`, (Date.now() - time) + 'ms');
     const projectTree = new Multimap<AbsolutePath, AbsolutePath>();
     for (const [key, value] of configs) {
       const children = value.config?.deps ?? [];
