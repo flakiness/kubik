@@ -33,3 +33,4 @@ const { errors } = await esbuild.build({
 
 if (!errors.length)
   await $`tsc --pretty -p ..`;
+

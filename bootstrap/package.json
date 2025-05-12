@@ -11,7 +11,7 @@
   "description": "",
   "dependencies": {
     "esbuild": "^0.24.0",
-    "kubik": "^0.6.0",
+    "kubik": "^0.10.0",
     "typescript": "^5.6.3"
   }
 }
