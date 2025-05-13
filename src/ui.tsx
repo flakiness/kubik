@@ -55,7 +55,6 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   const [projectScroll, setProjectScroll] = useState<number|undefined>(undefined);
 
   const [selectedTaskIndex, setSelectedTaskIndex] = useState<number>(0);
-  const [focusedPane, setFocusedPane] = useState<'left' | 'right'>('left');
 
   const { exit } = useApp();
   const { stdout } = useStdout();
@@ -98,7 +97,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   const firstVisibleLineIndex = projectScroll ?? Math.max(allLines.length - projectOutputHeight, 0);
   const lines = allLines.slice(firstVisibleLineIndex, firstVisibleLineIndex + projectOutputHeight);
 
-  const offset = allLines.length < projectOutputHeight ? 0 : (firstVisibleLineIndex / (allLines.length - projectOutputHeight));
+  const offset = allLines.length <= projectOutputHeight ? 0 : (firstVisibleLineIndex / (allLines.length - projectOutputHeight));
 
   const normalizeScrollLine = (firstLineNumber: number) => {
     if (firstLineNumber < 0)
@@ -114,48 +113,32 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   useInput((input, key) => {
     if (input === 'q' || (key.ctrl && input === 'c')) {
       exit();
-      return;
-    }
-
-    // Pane Switching
-    if (input === 'h' || key.leftArrow) {
-      setFocusedPane('left');
-      return;
-    }
-    if (input === 'l' || key.rightArrow) {
-      setFocusedPane('right');
-      return;
-    }
-    if (key.tab) {
-      setFocusedPane(focusedPane === 'right' ? 'left' : 'right');
-      return;
-    }
-
-    // Task Selection
-    if (focusedPane === 'left') {
-      if (input === 'k' || key.upArrow) {
-        setSelectedTaskIndex((prev) => Math.max(0, prev - 1));
-        setProjectScroll(undefined);
-      } else if (input === 'j' || key.downArrow) {
-        setSelectedTaskIndex((prev) => Math.min(projects.length - 1, prev + 1));
-        setProjectScroll(undefined);
-      }
-    } else if (focusedPane === 'right') { // Output scrolling
-      if (input === 'g') {
-        setProjectScroll(normalizeScrollLine(0));
-      } else if (input === 'G') {
-        setProjectScroll(normalizeScrollLine(allLines.length));
-      } else if ((input === 'u' && key.ctrl) || (key.shift && input === ' ')) {
-        setProjectScroll(normalizeScrollLine(firstVisibleLineIndex - (projectOutputHeight >> 1)));
-      } else if ((input === 'd' && key.ctrl) || (!key.shift && input === ' ')) {
-        setProjectScroll(normalizeScrollLine(firstVisibleLineIndex + (projectOutputHeight >> 1)));
-      } else if (input === 'k' || key.upArrow) {
-        setProjectScroll(normalizeScrollLine(firstVisibleLineIndex - 1));
-        // Scroll up
-      } else if (input === 'j' || key.downArrow) {
-        // Scroll down
-        setProjectScroll(normalizeScrollLine(firstVisibleLineIndex + 1));
-      }
+    } else if (input === 'p' || (key.tab && key.shift)) {
+      setSelectedTaskIndex((selectedTaskIndex - 1 + projects.length) % projects.length);
+      setProjectScroll(undefined);
+    } else if (input === 'P') {
+      setSelectedTaskIndex(0);
+      setProjectScroll(undefined);
+    } else if (input === 'n' || key.tab) {
+      setSelectedTaskIndex((selectedTaskIndex + 1 + projects.length) % projects.length);
+      setProjectScroll(undefined);
+    } else if (input === 'N') {
+      setSelectedTaskIndex(projects.length - 1);
+      setProjectScroll(undefined);
+    } else if (input === 'g') {
+      setProjectScroll(normalizeScrollLine(0));
+    } else if (input === 'G') {
+      setProjectScroll(normalizeScrollLine(allLines.length));
+    } else if ((input === 'u' && key.ctrl) || (key.shift && input === ' ')) {
+      setProjectScroll(normalizeScrollLine(firstVisibleLineIndex - (projectOutputHeight >> 1)));
+    } else if ((input === 'd' && key.ctrl) || (!key.shift && input === ' ')) {
+      setProjectScroll(normalizeScrollLine(firstVisibleLineIndex + (projectOutputHeight >> 1)));
+    } else if (input === 'k' || key.upArrow) {
+      setProjectScroll(normalizeScrollLine(firstVisibleLineIndex - 1));
+      // Scroll up
+    } else if (input === 'j' || key.downArrow) {
+      // Scroll down
+      setProjectScroll(normalizeScrollLine(firstVisibleLineIndex + 1));
     }
   });
 
@@ -163,7 +146,8 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
     <Box flexDirection="row" width={terminalWidth} height={terminalHeight}>
       <Box
         borderStyle="single"
-        borderColor={focusedPane === 'left' ? 'lightgray' : 'gray'}
+        borderColor={'lightgray'}
+        borderRight={false}
         flexDirection="column"
         flexShrink={0}
         paddingX={1}
@@ -183,10 +167,15 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
         ))}
       </Box>
 
+      <Box overflow="hidden" height="100%" width={1}>
+        <Text>{('┬' + '│'.repeat(terminalHeight - 2) + '┴').split('').join('\n')}</Text>
+      </Box>
+
       <Box
         borderStyle="single"
         borderRight={false}
-        borderColor={focusedPane === 'right' ? 'lightgray' : 'gray'}
+        borderLeft={false}
+        borderColor={'lightgray'}
         flexDirection="row"
         height='100%'
         width={outputWidth}
@@ -199,8 +188,8 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
         {renderScrollBar({
           height: terminalHeight,
           offset,
-          bgColor: focusedPane === 'right' ? 'lightgray' : 'gray',
-          fgColor: focusedPane === 'right' ? 'lightgray' : 'gray',
+          bgColor: 'lightgray',
+          fgColor: 'lightgray',
         })}
       </Box>
     </Box>
