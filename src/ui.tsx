@@ -59,6 +59,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
 
   const { exit } = useApp();
   const { stdout } = useStdout();
+
   const [terminalHeight, setTerminalHeight] = useState<number>(stdout.rows);
   const [terminalWidth, setTerminalWidth] = useState<number>(stdout.columns);
 

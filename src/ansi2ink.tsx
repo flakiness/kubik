@@ -17,47 +17,6 @@
 import { Newline, Text } from 'ink';
 import React, { JSX } from 'react';
 
-// Standard ANSI color names that INK/Chalk understands
-const inkAnsiColors: { [code: number]: string } = {
-  30: 'black',
-  31: 'red',
-  32: 'green',
-  33: 'yellow',
-  34: 'blue',
-  35: 'magenta',
-  36: 'cyan',
-  37: 'white',
-  // Bright colors
-  90: 'gray', // or 'grey', 'blackBright'
-  91: 'redBright',
-  92: 'greenBright',
-  93: 'yellowBright',
-  94: 'blueBright',
-  95: 'magentaBright',
-  96: 'cyanBright',
-  97: 'whiteBright',
-};
-
-const inkAnsiBackgroundColors: { [code: number]: string } = {
-  40: 'black',
-  41: 'red',
-  42: 'green',
-  43: 'yellow',
-  44: 'blue',
-  45: 'magenta',
-  46: 'cyan',
-  47: 'white',
-  // Bright background colors
-  100: 'gray', // or 'grey', 'blackBright'
-  101: 'redBright',
-  102: 'greenBright',
-  103: 'yellowBright',
-  104: 'blueBright',
-  105: 'magentaBright',
-  106: 'cyanBright',
-  107: 'whiteBright',
-};
-
 type ANSIStyle = {
   bold?: boolean,
   dim?: boolean,
@@ -112,55 +71,47 @@ function parseAnsiText(text: string): ParsedToken[] {
         case 27:
           style.inverseColors = false;
           break;
-        case 30:
-        case 31:
-        case 32:
-        case 33:
-        case 34:
-        case 35:
-        case 36:
-        case 37:
-          style.fgColor = inkAnsiColors[code];
-          break;
+        case 30: style.fgColor = 'black'; break;
+        case 31: style.fgColor = 'red'; break; 
+        case 32: style.fgColor = 'green'; break;
+        case 33: style.fgColor = 'yellow'; break;
+        case 34: style.fgColor = 'blue'; break;
+        case 35: style.fgColor = 'magenta'; break;
+        case 36: style.fgColor = 'cyan'; break;
+        case 37: style.fgColor = 'white'; break;
         case 39:
           delete style.fgColor;
           break;
-        case 40:
-        case 41:
-        case 42:
-        case 43:
-        case 44:
-        case 45:
-        case 46:
-        case 47:
-          style.bgColor = inkAnsiBackgroundColors[code];
-          break;
+        case 40: style.bgColor = 'black'; break;
+        case 41: style.bgColor = 'red'; break;
+        case 42: style.bgColor = 'green'; break;
+        case 43: style.bgColor = 'yellow'; break;
+        case 44: style.bgColor = 'blue'; break;
+        case 45: style.bgColor = 'magenta'; break;
+        case 46: style.bgColor = 'cyan'; break;
+        case 47: style.bgColor = 'white'; break;
         case 49:
           delete style.bgColor;
           break;
         case 53:
           // overline; not supported.
           break;
-        case 90:
-        case 91:
-        case 92:
-        case 93:
-        case 94:
-        case 95:
-        case 96:
-        case 97:
-          style.fgColor = inkAnsiColors[code];
-          break;
-        case 100:
-        case 101:
-        case 102:
-        case 103:
-        case 104:
-        case 105:
-        case 106:
-        case 107:
-          style.bgColor = inkAnsiBackgroundColors[code];
-          break;
+        case 90: style.fgColor = 'gray'; break;
+        case 91: style.fgColor = 'redBright'; break;
+        case 92: style.fgColor = 'greenBright'; break;
+        case 93: style.fgColor = 'yellowBright'; break;
+        case 94: style.fgColor = 'blueBright'; break;
+        case 95: style.fgColor = 'magentaBright'; break;
+        case 96: style.fgColor = 'cyanBright'; break;
+        case 97: style.fgColor = 'whiteBright'; break;
+        case 100: style.bgColor = 'gray'; break;
+        case 101: style.bgColor = 'redBright'; break;
+        case 102: style.bgColor = 'greenBright'; break;
+        case 103: style.bgColor = 'yellowBright'; break;
+        case 104: style.bgColor = 'blueBright'; break;
+        case 105: style.bgColor = 'magentaBright'; break;
+        case 106: style.bgColor = 'cyanBright'; break;
+        case 107: style.bgColor = 'whiteBright'; break;
       }
     } else if (text && !style.hidden) {
       result.push({
@@ -220,7 +171,7 @@ function renderToInk(parsedText: ParsedToken[], lineWidth: number): JSX.Element[
   return result;
 }
 
-export function ansi2ink(text: string, lineWidth: number, defaultColors?: { bg: string, fg: string }): JSX.Element[] {
+export function ansi2ink(text: string, lineWidth: number): JSX.Element[] {
   const parsed = parseAnsiText(text);
   return renderToInk(parsed, lineWidth);
 }
