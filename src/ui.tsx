@@ -24,25 +24,34 @@ const getStatusIndicator = (status: TaskStatus) => {
 };
 
 function renderScrollBar(options: {
+  scrollTop: number,
+  scrollHeight: number,
   height: number,
-  offset: number,
   fgColor: string,
   bgColor: string,
 }): JSX.Element {
-  const height = options.height - 2;
-  const prefix = Math.max(Math.ceil(height * options.offset) - 1, 0);
-  const suffix = height - prefix - 1; // -1 for thumb
+  const BORDER = '│';
+  const height = options.height;
+  if (options.scrollHeight <= height)
+    return <Text color={options.bgColor}>{BORDER.repeat(height).split('').join('\n')}</Text>
 
-  let prefixText = '┐';
+  const thumbHeight = Math.max(Math.floor((height / options.scrollHeight) * height), 1);
+  let prefix = Math.floor(options.scrollTop / options.scrollHeight * height);
+  let suffix = height - thumbHeight - prefix;
+  if (options.scrollHeight <= options.scrollTop + options.height) {
+    suffix = 0;
+    prefix = height - thumbHeight;
+  }
+
+  let prefixText = '';
   if (prefix > 0)
-    prefixText += '│'.repeat(prefix);
+    prefixText += BORDER.repeat(prefix);
   let suffixText = '';
   if (suffix > 0)
-    suffixText += '│'.repeat(suffix);
-  suffixText += '┘';
+    suffixText += BORDER.repeat(suffix);
   return <Text>
     <Text color={options.bgColor}>{prefixText.split('').join('\n')}</Text>
-    <Text color={options.fgColor}>█</Text>
+    <Text color={options.fgColor}>{'█'.repeat(thumbHeight).split('').join('\n')}</Text>
     <Text color={options.bgColor}>{suffixText.split('').join('\n')}</Text>
   </Text>;
 }
@@ -91,13 +100,11 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
 
   // -2 for top/bottom borders
   const projectOutputHeight = terminalHeight - 2;
-  // -2 for left border + scrollbar
-  const allLines = ansi2ink(selectedProject?.output() ?? '', outputWidth - 2);
+  // -4 for left border + scrollbar + paddings
+  const allLines = ansi2ink(selectedProject?.output() ?? '', outputWidth - 4);
 
   const firstVisibleLineIndex = projectScroll ?? Math.max(allLines.length - projectOutputHeight, 0);
   const lines = allLines.slice(firstVisibleLineIndex, firstVisibleLineIndex + projectOutputHeight);
-
-  const offset = allLines.length <= projectOutputHeight ? 0 : (firstVisibleLineIndex / (allLines.length - projectOutputHeight));
 
   const normalizeScrollLine = (firstLineNumber: number) => {
     if (firstLineNumber < 0)
@@ -146,7 +153,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
     <Box flexDirection="row" width={terminalWidth} height={terminalHeight}>
       <Box
         borderStyle="single"
-        borderColor={'lightgray'}
+        borderColor={'gray'}
         borderRight={false}
         flexDirection="column"
         flexShrink={0}
@@ -168,14 +175,15 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
       </Box>
 
       <Box overflow="hidden" height="100%" width={1}>
-        <Text>{('┬' + '│'.repeat(terminalHeight - 2) + '┴').split('').join('\n')}</Text>
+        <Text color={'gray'}>{('┬' + '│'.repeat(terminalHeight - 2) + '┴').split('').join('\n')}</Text>
       </Box>
 
       <Box
         borderStyle="single"
         borderRight={false}
         borderLeft={false}
-        borderColor={'lightgray'}
+        borderColor={'gray'}
+        paddingX={1}
         flexDirection="row"
         height='100%'
         width={outputWidth}
@@ -185,12 +193,18 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
       </Box>
 
       <Box overflow="hidden" height="100%" width={1}>
-        {renderScrollBar({
-          height: terminalHeight,
-          offset,
-          bgColor: 'lightgray',
-          fgColor: 'lightgray',
-        })}
+        <Text>
+          <Text color='gray'>┐</Text>
+          {renderScrollBar({
+            height: terminalHeight - 2,
+            scrollHeight: allLines.length,
+            scrollTop: firstVisibleLineIndex,
+            bgColor: 'gray',
+            fgColor: 'gray',
+          })}
+          <Text color='gray'>┘</Text>
+        </Text>
+        
       </Box>
     </Box>
   );
