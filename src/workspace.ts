@@ -131,8 +131,7 @@ export class Project extends EventEmitter<ProjectEvents> {
   }
 
   durationMs() {
-    const status = this.status();
-    return (status === 'fail' || status === 'ok') ? (this._stopTimestampMs ?? Date.now()) - this._startTimestampMs : 0;
+    return (this._stopTimestampMs ?? Date.now()) - this._startTimestampMs;
   }
 
   name() {

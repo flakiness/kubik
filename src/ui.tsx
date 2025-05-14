@@ -29,11 +29,11 @@ function renderScrollBar(options: {
   height: number,
   fgColor: string,
   bgColor: string,
-}): JSX.Element {
+}): JSX.Element|undefined {
   const BORDER = '│';
   const height = options.height;
   if (options.scrollHeight <= height)
-    return <Text color={options.bgColor}>{BORDER.repeat(height).split('').join('\n')}</Text>
+    return undefined;
 
   const thumbHeight = Math.max(Math.floor((height / options.scrollHeight) * height), 1);
   let prefix = Math.floor(options.scrollTop / options.scrollHeight * height);
@@ -51,7 +51,7 @@ function renderScrollBar(options: {
     suffixText += BORDER.repeat(suffix);
   return <Text>
     <Text color={options.bgColor}>{prefixText.split('').join('\n')}</Text>
-    <Text color={options.fgColor}>{'█'.repeat(thumbHeight).split('').join('\n')}</Text>
+    <Text color={options.fgColor}>{'▐'.repeat(thumbHeight).split('').join('\n')}</Text>
     <Text color={options.bgColor}>{suffixText.split('').join('\n')}</Text>
   </Text>;
 }
@@ -98,10 +98,10 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   const taskListWidth = Math.min(Math.max(minWidth, maxProjectWidth + 6), maxWidth);
   const outputWidth = terminalWidth - taskListWidth;
 
-  // -2 for top/bottom borders
-  const projectOutputHeight = terminalHeight - 2;
-  // -4 for left border + scrollbar + paddings
-  const allLines = ansi2ink(selectedProject?.output() ?? '', outputWidth - 4);
+  // -1 for title
+  const projectOutputHeight = terminalHeight - 1;
+  // -2 for left border + scrollbar + left padding
+  const allLines = ansi2ink(selectedProject?.output() ?? '', outputWidth - 3);
 
   const firstVisibleLineIndex = projectScroll ?? Math.max(allLines.length - projectOutputHeight, 0);
   const lines = allLines.slice(firstVisibleLineIndex, firstVisibleLineIndex + projectOutputHeight);
@@ -149,12 +149,15 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
     }
   });
 
+  let selectedTitle = '';
+  if (selectedProject) {
+    selectedTitle = ` ${selectedProject.name()}${selectedProject.durationMs() > 0 ? ' – ' + humanReadableMs(selectedProject.durationMs()) : ''}`;
+    selectedTitle = selectedTitle.padEnd(outputWidth - 1, ' ');
+  }
+
   return (
     <Box flexDirection="row" width={terminalWidth} height={terminalHeight}>
       <Box
-        borderStyle="single"
-        borderColor={'gray'}
-        borderRight={false}
         flexDirection="column"
         flexShrink={0}
         paddingX={1}
@@ -163,49 +166,51 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
       >
         <Text bold underline>Tasks</Text>
         {projects.map((project, index) => (
-          <Box flexDirection='row' gap={1} key={index}>
-            <Text>{getStatusIndicator(project.status())}</Text>
-            <Text
-              color={getStatusColor(project.status())}
-              backgroundColor={index === selectedTaskIndex ? 'gray' : undefined}
-              wrap={'truncate-start'}
-            >{project.name()}</Text>
-          </Box>
+          <Text key={project.id()} color={getStatusColor(project.status())} inverse={selectedTaskIndex === index}>
+            <Text> {getStatusIndicator(project.status())} </Text>
+            <Text wrap={'truncate-start'}>{project.name()} </Text>
+          </Text>
         ))}
-      </Box>
-
-      <Box overflow="hidden" height="100%" width={1}>
-        <Text color={'gray'}>{('┬' + '│'.repeat(terminalHeight - 2) + '┴').split('').join('\n')}</Text>
       </Box>
 
       <Box
         borderStyle="single"
         borderRight={false}
-        borderLeft={false}
+        borderTop={false}
+        borderBottom={false}
+        borderLeft={true}
         borderColor={'gray'}
-        paddingX={1}
-        flexDirection="row"
+        flexDirection="column"
+        flexShrink={0}
         height='100%'
         width={outputWidth}
         overflow="hidden"
       >
-        <Text>{lines}</Text>
+        {selectedProject ? 
+          <Box flexShrink={0}>
+            <Text inverse={true} color={getStatusColor(selectedProject.status())}>{selectedTitle}</Text>
+          </Box>
+        : undefined}
+        <Box
+          paddingLeft={1}
+          flexDirection="row"
+        >
+          <Box flexGrow={1}>
+            <Text>{lines}</Text>
+          </Box>
+          <Box overflow="hidden" height="100%" width={1}>
+            {renderScrollBar({
+              height: terminalHeight,
+              scrollHeight: allLines.length,
+              scrollTop: firstVisibleLineIndex,
+              bgColor: 'gray',
+              fgColor: 'gray',
+            })}
+          </Box>
+        </Box>
       </Box>
 
-      <Box overflow="hidden" height="100%" width={1}>
-        <Text>
-          <Text color='gray'>┐</Text>
-          {renderScrollBar({
-            height: terminalHeight - 2,
-            scrollHeight: allLines.length,
-            scrollTop: firstVisibleLineIndex,
-            bgColor: 'gray',
-            fgColor: 'gray',
-          })}
-          <Text color='gray'>┘</Text>
-        </Text>
-        
-      </Box>
+      
     </Box>
   );
 };
@@ -220,11 +225,19 @@ export function startWatchApp(workspace: Workspace) {
     process.stdout.write('\x1b[?1049l');
     workspace.stop();
   });
-  /*
-  withFullScreen(<App workspace={workspace}/>, {
-    exitOnCtrlC: true,
-  }).start();  
-  */
 }
 
-
+export function humanReadableMs(ms: number | { valueOf(): number }): string {
+  let seconds = ((+ms) / 1000)|0;
+  if (seconds < 1)
+    return `${ms}ms`;
+  let minutes = (seconds / 60)|0;
+  seconds = seconds % 60;
+  if (minutes < 1)
+    return `${seconds}s`;
+  const hours = (minutes / 60)|0;
+  minutes = minutes % 60;
+  if (hours < 1)
+    return seconds !== 0 ? `${minutes}min ${seconds}s` : `${minutes}min`;
+  return `${hours}h ${minutes}min`;
+}
