@@ -38,17 +38,17 @@ function renderScrollBar(options: {
   const thumbHeight = Math.max(Math.floor((height / options.scrollHeight) * height), 1);
   let prefix = Math.floor(options.scrollTop / options.scrollHeight * height);
   let suffix = height - thumbHeight - prefix;
-  if (options.scrollHeight <= options.scrollTop + options.height) {
+  if (options.scrollHeight <= options.scrollTop + height) {
+    suffix = 0;
+    prefix = height - thumbHeight;
+  } else if (prefix + thumbHeight >= height) {
     suffix = 0;
     prefix = height - thumbHeight;
   }
 
-  let prefixText = '';
-  if (prefix > 0)
-    prefixText += BORDER.repeat(prefix);
-  let suffixText = '';
-  if (suffix > 0)
-    suffixText += BORDER.repeat(suffix);
+  const prefixText = prefix > 0 ? BORDER.repeat(prefix) : '';
+  const suffixText = suffix > 0 ? BORDER.repeat(suffix) : '';
+
   return <Text>
     <Text color={options.bgColor}>{prefixText.split('').join('\n')}</Text>
     <Text color={options.fgColor}>{'▐'.repeat(thumbHeight).split('').join('\n')}</Text>
@@ -160,11 +160,10 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
       <Box
         flexDirection="column"
         flexShrink={0}
-        paddingX={1}
         width={taskListWidth}
         height="100%"
       >
-        <Text bold underline>Tasks</Text>
+        <Text> <Text bold underline>Tasks</Text></Text>
         {projects.map((project, index) => (
           <Text key={project.id()} color={getStatusColor(project.status())} inverse={selectedTaskIndex === index}>
             <Text> {getStatusIndicator(project.status())} </Text>
@@ -200,7 +199,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
           </Box>
           <Box overflow="hidden" height="100%" width={1}>
             {renderScrollBar({
-              height: terminalHeight,
+              height: terminalHeight - 1,
               scrollHeight: allLines.length,
               scrollTop: firstVisibleLineIndex,
               bgColor: 'gray',
@@ -209,8 +208,6 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
           </Box>
         </Box>
       </Box>
-
-      
     </Box>
   );
 };
