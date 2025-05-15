@@ -60,6 +60,8 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   // Force re-render
   const [,setTick] = useState<number>(0);
 
+  const [showTasks, setShowTasks] = useState<boolean>(true);
+
   const [projects, setProjects] = useState<Project[]>(workspace.topsortProjects());
   const [projectScroll, setProjectScroll] = useState<number|undefined>(undefined);
 
@@ -95,7 +97,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   const maxProjectWidth = Math.max(...projects.map(p => p.name().length), 0);
   const minWidth = Math.min(Math.round(terminalWidth * 0.3), 25);
   const maxWidth = Math.round(terminalWidth * 0.5);
-  const taskListWidth = Math.min(Math.max(minWidth, maxProjectWidth + 6), maxWidth);
+  const taskListWidth = showTasks ? Math.min(Math.max(minWidth, maxProjectWidth + 6), maxWidth) : 0;
   const outputWidth = terminalWidth - taskListWidth;
 
   // -1 for title
@@ -120,6 +122,8 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   useInput((input, key) => {
     if (input === 'q' || (key.ctrl && input === 'c')) {
       exit();
+    } else if (input === 'z') {
+      setShowTasks(!showTasks);
     } else if (input === 'p' || (key.tab && key.shift)) {
       setSelectedTaskIndex((selectedTaskIndex - 1 + projects.length) % projects.length);
       setProjectScroll(undefined);
@@ -157,27 +161,28 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
 
   return (
     <Box flexDirection="row" width={terminalWidth} height={terminalHeight}>
-      <Box
-        flexDirection="column"
-        flexShrink={0}
-        width={taskListWidth}
-        height="100%"
-      >
-        <Text> <Text bold underline>Tasks</Text></Text>
-        {projects.map((project, index) => (
-          <Text key={project.id()} color={getStatusColor(project.status())} inverse={selectedTaskIndex === index}>
-            <Text> {getStatusIndicator(project.status())} </Text>
-            <Text wrap={'truncate-start'}>{project.name()} </Text>
-          </Text>
-        ))}
-      </Box>
+      {showTasks ?  <Box
+          flexDirection="column"
+          flexShrink={0}
+          width={taskListWidth}
+          height="100%"
+        >
+          <Text> <Text bold underline>Tasks</Text></Text>
+          {projects.map((project, index) => (
+            <Text key={project.id()} color={getStatusColor(project.status())} inverse={selectedTaskIndex === index}>
+              <Text> {getStatusIndicator(project.status())} </Text>
+              <Text wrap={'truncate-start'}>{project.name()} </Text>
+            </Text>
+          ))}
+        </Box>
+      : undefined}
 
       <Box
         borderStyle="single"
         borderRight={false}
         borderTop={false}
         borderBottom={false}
-        borderLeft={true}
+        borderLeft={showTasks}
         borderColor={'gray'}
         flexDirection="column"
         flexShrink={0}
