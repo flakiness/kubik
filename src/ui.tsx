@@ -95,15 +95,14 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
 
   // A bit of layout computation
   const maxProjectWidth = Math.max(...projects.map(p => p.name().length), 0);
-  const minWidth = Math.min(Math.round(terminalWidth * 0.3), 25);
   const maxWidth = Math.round(terminalWidth * 0.5);
-  const taskListWidth = showTasks ? Math.min(Math.max(minWidth, maxProjectWidth + 6), maxWidth) : 0;
+  const taskListWidth = showTasks ? Math.max(Math.min(maxProjectWidth + 5, maxWidth), 10) : 0;
   const outputWidth = terminalWidth - taskListWidth;
 
   // -1 for title
   const projectOutputHeight = terminalHeight - 1;
-  // -2 for left border + scrollbar + left padding
-  const allLines = ansi2ink(selectedProject?.output() ?? '', outputWidth - 3);
+  // -2 for left border + scrollbar
+  const allLines = ansi2ink(selectedProject?.output() ?? '', outputWidth - 2);
 
   const firstVisibleLineIndex = projectScroll ?? Math.max(allLines.length - projectOutputHeight, 0);
   const lines = allLines.slice(firstVisibleLineIndex, firstVisibleLineIndex + projectOutputHeight);
@@ -155,8 +154,8 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
 
   let selectedTitle = '';
   if (selectedProject) {
-    selectedTitle = ` ${selectedProject.name()}${selectedProject.durationMs() > 0 ? ' – ' + humanReadableMs(selectedProject.durationMs()) : ''}`;
-    selectedTitle = selectedTitle.padEnd(outputWidth - 1, ' ');
+    selectedTitle = `${selectedProject.name()}${selectedProject.durationMs() > 0 ? ' – ' + humanReadableMs(selectedProject.durationMs()) : ''}`;
+    selectedTitle = selectedTitle.padEnd(outputWidth, ' ');
   }
 
   return (
@@ -166,6 +165,12 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
           flexShrink={0}
           width={taskListWidth}
           height="100%"
+          borderStyle="single"
+          borderRight={true}
+          borderTop={false}
+          borderColor={'gray'}
+          borderBottom={false}
+          borderLeft={false}
         >
           <Text> <Text bold underline>Tasks</Text></Text>
           {projects.map((project, index) => (
@@ -178,12 +183,6 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
       : undefined}
 
       <Box
-        borderStyle="single"
-        borderRight={false}
-        borderTop={false}
-        borderBottom={false}
-        borderLeft={showTasks}
-        borderColor={'gray'}
         flexDirection="column"
         flexShrink={0}
         height='100%'
@@ -196,7 +195,6 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
           </Box>
         : undefined}
         <Box
-          paddingLeft={1}
           flexDirection="row"
         >
           <Box flexGrow={1}>
