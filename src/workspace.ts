@@ -304,6 +304,10 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     return taskIds.map(taskId => this._projects.get(taskId)!);
   }
 
+  scheduleUpdate(project: Project) {
+    this._scheduleUpdate({ changedProject: project });
+  }
+
   private _scheduleUpdate(options: { changedProject?: Project, needsRereadConfigFiles?: boolean }) {
     if (!options.changedProject && !options.needsRereadConfigFiles)
       return;

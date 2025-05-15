@@ -123,6 +123,8 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
       exit();
     } else if (input === 'z') {
       setShowTasks(!showTasks);
+    } else if (input === 'r' && selectedProject) {
+      workspace.scheduleUpdate(selectedProject);
     } else if (input === 'p' || (key.tab && key.shift)) {
       setSelectedTaskIndex((selectedTaskIndex - 1 + projects.length) % projects.length);
       setProjectScroll(undefined);
