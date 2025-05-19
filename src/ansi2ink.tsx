@@ -42,76 +42,79 @@ function parseAnsiText(text: string): ParsedToken[] {
   let style: ANSIStyle = {};
 
   while ((match = regex.exec(text)) !== null) {
-    const [, , codeStr, , text] = match;
+    const [, ,codeStr, , text] = match;
     if (codeStr) {
-      const code = +codeStr;
-      switch (code) {
-        case 0:
-          style = {};
-          break;
-        case 1: style.bold = true; break;
-        case 2: style.dim = true; break;
-        case 3: style.italic = true; break;
-        case 4: style.underline = true; break;
-        case 7:
-          style.inverseColors = true;
-          break;
-        case 8: style.hidden = true; break;
-        case 9: style.strikethrough = true; break;
-        case 22:
-          style.dim = false;
-          style.bold = false;
-          break;
-        case 23:
-          style.italic = false;
-          break;
-        case 24:
-          style.underline = false;
-          break;
-        case 27:
-          style.inverseColors = false;
-          break;
-        case 30: style.fgColor = 'black'; break;
-        case 31: style.fgColor = 'red'; break; 
-        case 32: style.fgColor = 'green'; break;
-        case 33: style.fgColor = 'yellow'; break;
-        case 34: style.fgColor = 'blue'; break;
-        case 35: style.fgColor = 'magenta'; break;
-        case 36: style.fgColor = 'cyan'; break;
-        case 37: style.fgColor = 'white'; break;
-        case 39:
-          delete style.fgColor;
-          break;
-        case 40: style.bgColor = 'black'; break;
-        case 41: style.bgColor = 'red'; break;
-        case 42: style.bgColor = 'green'; break;
-        case 43: style.bgColor = 'yellow'; break;
-        case 44: style.bgColor = 'blue'; break;
-        case 45: style.bgColor = 'magenta'; break;
-        case 46: style.bgColor = 'cyan'; break;
-        case 47: style.bgColor = 'white'; break;
-        case 49:
-          delete style.bgColor;
-          break;
-        case 53:
-          // overline; not supported.
-          break;
-        case 90: style.fgColor = 'gray'; break;
-        case 91: style.fgColor = 'redBright'; break;
-        case 92: style.fgColor = 'greenBright'; break;
-        case 93: style.fgColor = 'yellowBright'; break;
-        case 94: style.fgColor = 'blueBright'; break;
-        case 95: style.fgColor = 'magentaBright'; break;
-        case 96: style.fgColor = 'cyanBright'; break;
-        case 97: style.fgColor = 'whiteBright'; break;
-        case 100: style.bgColor = 'gray'; break;
-        case 101: style.bgColor = 'redBright'; break;
-        case 102: style.bgColor = 'greenBright'; break;
-        case 103: style.bgColor = 'yellowBright'; break;
-        case 104: style.bgColor = 'blueBright'; break;
-        case 105: style.bgColor = 'magentaBright'; break;
-        case 106: style.bgColor = 'cyanBright'; break;
-        case 107: style.bgColor = 'whiteBright'; break;
+      const tokens = codeStr.split(';');
+      for (const token of tokens) {
+        const code = +token;
+        switch (code) {
+          case 0:
+            style = {};
+            break;
+          case 1: style.bold = true; break;
+          case 2: style.dim = true; break;
+          case 3: style.italic = true; break;
+          case 4: style.underline = true; break;
+          case 7:
+            style.inverseColors = true;
+            break;
+          case 8: style.hidden = true; break;
+          case 9: style.strikethrough = true; break;
+          case 22:
+            style.dim = false;
+            style.bold = false;
+            break;
+          case 23:
+            style.italic = false;
+            break;
+          case 24:
+            style.underline = false;
+            break;
+          case 27:
+            style.inverseColors = false;
+            break;
+          case 30: style.fgColor = 'black'; break;
+          case 31: style.fgColor = 'red'; break; 
+          case 32: style.fgColor = 'green'; break;
+          case 33: style.fgColor = 'yellow'; break;
+          case 34: style.fgColor = 'blue'; break;
+          case 35: style.fgColor = 'magenta'; break;
+          case 36: style.fgColor = 'cyan'; break;
+          case 37: style.fgColor = 'white'; break;
+          case 39:
+            delete style.fgColor;
+            break;
+          case 40: style.bgColor = 'black'; break;
+          case 41: style.bgColor = 'red'; break;
+          case 42: style.bgColor = 'green'; break;
+          case 43: style.bgColor = 'yellow'; break;
+          case 44: style.bgColor = 'blue'; break;
+          case 45: style.bgColor = 'magenta'; break;
+          case 46: style.bgColor = 'cyan'; break;
+          case 47: style.bgColor = 'white'; break;
+          case 49:
+            delete style.bgColor;
+            break;
+          case 53:
+            // overline; not supported.
+            break;
+          case 90: style.fgColor = 'gray'; break;
+          case 91: style.fgColor = 'redBright'; break;
+          case 92: style.fgColor = 'greenBright'; break;
+          case 93: style.fgColor = 'yellowBright'; break;
+          case 94: style.fgColor = 'blueBright'; break;
+          case 95: style.fgColor = 'magentaBright'; break;
+          case 96: style.fgColor = 'cyanBright'; break;
+          case 97: style.fgColor = 'whiteBright'; break;
+          case 100: style.bgColor = 'gray'; break;
+          case 101: style.bgColor = 'redBright'; break;
+          case 102: style.bgColor = 'greenBright'; break;
+          case 103: style.bgColor = 'yellowBright'; break;
+          case 104: style.bgColor = 'blueBright'; break;
+          case 105: style.bgColor = 'magentaBright'; break;
+          case 106: style.bgColor = 'cyanBright'; break;
+          case 107: style.bgColor = 'whiteBright'; break;
+        }
       }
     } else if (text && !style.hidden) {
       result.push({

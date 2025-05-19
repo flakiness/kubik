@@ -4,6 +4,7 @@ import React, { JSX, useEffect, useState } from 'react';
 import { ansi2ink } from './ansi2ink.js';
 import { TaskStatus } from './taskTree.js';
 import { Project, Workspace } from './workspace.js';
+import fs from 'fs';
 
 const getStatusColor = (status: TaskStatus) => {
   switch (status) {
@@ -123,6 +124,8 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
       exit();
     } else if (input === 'z') {
       setShowTasks(!showTasks);
+    } else if (input === 's') {
+      fs.writeFileSync('./kubikstdoutstderr', selectedProject?.output() ?? '', 'utf8');
     } else if (input === 'r' && selectedProject) {
       workspace.scheduleUpdate(selectedProject);
     } else if (input === 'p' || (key.tab && key.shift)) {
