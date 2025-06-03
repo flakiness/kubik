@@ -11,7 +11,7 @@ Kubik supports running tasks with different parallelization modes and has a buil
 * [Getting Started](#getting-started)
 * [Tasks vs Services](#tasks-vs-services)
 * [Typescript Support](#typescript-support)
-* [Watch Mode](#watch-mode)
+* [Watch Mode TUI](#watch-mode-tui)
 * [Parallelization](#watch-mode)
 * [Environment Files](#environment-files)
 * [Shebang](#shebang-usage)
@@ -124,10 +124,11 @@ and use `.ts`/`.tsx` extension to write your scripts:
     ```
 
 
-## Watch Mode
+## Watch Mode TUI
 
 Kubik supports watch mode where it listens for changes on the file system and reruns tasks and
-their dependencies. 
+their dependencies. In this mode, Kubik shows a slick terminal application to observe & control task
+execution.
 
 To run watch mode, use `-w` or `--watch` flag:
 
@@ -141,9 +142,16 @@ In watch mode, Kubik launches a terminal app that shows progress, duration and l
 
 There are a few shortcuts available to navigate inside the watch mode app:
 
-* To cycle focus through panels, use `Tab` and `Shift-Tab`
-* To scroll logs of the focused pane, use arrows, `j`, `k`, `Ctrl-U`, `Ctrl-D`, `gg` and `Shift-G`.
-* You can also use mouse to scroll logs
+* `n / p`       select next / previous task
+* `N / P`       select last / first task
+* `j / k`       scroll up / down 1 line
+* `C-u / C-d`   scroll up / down half a screen
+* `g / G`       scroll to bottom / top
+* `r`           restart a task and all its dependencies
+* `s`           save current task output to ./kubikstdoutstderr
+* `z`           toggle tasks sidebar pane
+* `?`           toggle help
+
 
 By default, Kubik watches for changes in files commonly involved in build tasks, such as:
 
