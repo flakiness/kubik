@@ -161,12 +161,10 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
     workspace.on('project_added', project => {
       project.on('build_status_changed', () => setProjects(workspace.bfsProjects()));
       project.on('build_stdout', () => {
-        if (project === selectedProject)
-          setTick(Date.now());
+        setTick(Date.now());
       });
       project.on('build_stderr', () => {
-        if (project === selectedProject)
-          setTick(Date.now());
+        setTick(Date.now());
       });
     });
     workspace.on('projects_changed', () => setProjects(workspace.bfsProjects()));
