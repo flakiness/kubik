@@ -25,20 +25,23 @@ export type ReadConfigResult = {
 };
 
 export async function readConfigTree(roots: AbsolutePath[]): Promise<Map<AbsolutePath, ReadConfigResult>> {
+  console.time('reading configs');
   const results = new Map<AbsolutePath, ReadConfigResult>();
 
-  const queue = [...roots];
-  while (queue.length) {
-    const configPath = queue.pop()!;
-    const result = await readSingleConfig(configPath);
-    results.set(configPath, result);
-    if (result.config) {
-      for (const child of result.config.deps) {
-        if (!results.has(child))
-          queue.push(child);
-      }
-    }
+  let configsToRead = [...roots];
+  while (configsToRead.length) {
+
+    const newConfigPaths = (await Promise.all(configsToRead.map(async configPath => {
+      const result = await readSingleConfig(configPath);
+      results.set(configPath, result);
+      if (!result.config)
+        return [];
+
+      return result.config.deps;
+    }))).flat();
+    configsToRead = newConfigPaths.filter(configPath => !results.has(configPath));
   }
+  console.timeEnd('reading configs');
   return results;
 }
 
