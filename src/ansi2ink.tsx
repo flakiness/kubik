@@ -156,9 +156,10 @@ function renderToInk(parsedText: ParsedToken[], lineWidth: number): JSX.Element[
   }
 
   for (const { text, style } of parsedText) {
-    const tokenLines = text.replaceAll('\t', '       ').split('\n');
+    // Simplify tab rendering; instead of tabbed columns, we simply replace all tabs with 8 spaces.
+    const tokenLines = text.replaceAll('\t', '        ').split('\n');
     for (let lineIdx = 0; lineIdx < tokenLines.length; ++lineIdx) {
-      if (lineIdx > 0 && currentLineText)
+      if (lineIdx > 0)
         flushCurrentLine();
       let line = tokenLines[lineIdx];
       // Handle line wrapping
