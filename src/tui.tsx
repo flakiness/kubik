@@ -1,6 +1,7 @@
 import chalk from 'chalk'; // For easily generating ANSI sequences in the mock data
 import fs from 'fs';
 import { Box, render, Text, useApp, useInput, useStdout } from 'ink';
+import path from 'path';
 import React, { JSX, useEffect, useState } from 'react';
 import { ansi2ink } from './ansi2ink.js';
 import { TaskStatus } from './taskTree.js';
@@ -24,6 +25,8 @@ const getStatusIndicator = (status: TaskStatus) => {
   }
 };
 
+const packageJSON = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, '..', 'package.json'), 'utf-8'));
+
 const HELP = `
 ${chalk.bold('TUI Shortcuts')}
   ${chalk.yellow('n / p')}       select next / previous task
@@ -36,7 +39,8 @@ ${chalk.bold('TUI Shortcuts')}
   ${chalk.yellow('z')}           toggle tasks sidebar pane
   ${chalk.yellow('?')}           toggle help
 
-Kubik's home is at ${chalk.underline('https://github.com/flakiness/kubik')}, come visit!
+Kubik's version is ${chalk.yellow(`v${packageJSON.version}`)}
+Kubik's home is at ${chalk.bold(chalk.underline('https://github.com/flakiness/kubik'))} - come visit!
 `;
 
 function renderScrollBar(options: {
