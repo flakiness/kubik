@@ -1,10 +1,10 @@
 import chalk from 'chalk'; // For easily generating ANSI sequences in the mock data
+import fs from 'fs';
 import { Box, render, Text, useApp, useInput, useStdout } from 'ink';
 import React, { JSX, useEffect, useState } from 'react';
 import { ansi2ink } from './ansi2ink.js';
 import { TaskStatus } from './taskTree.js';
 import { Project, Workspace } from './workspace.js';
-import fs from 'fs';
 
 const getStatusColor = (status: TaskStatus) => {
   switch (status) {
@@ -23,6 +23,19 @@ const getStatusIndicator = (status: TaskStatus) => {
     default: return chalk.gray('○');
   }
 };
+
+const HELP = `
+${chalk.bold('TUI Shortcuts')}
+  ${chalk.yellow('n / p')}       select next / previous task
+  ${chalk.yellow('N / P')}       select last / first task
+  ${chalk.yellow('j / k')}       scroll up / down 1 line
+  ${chalk.yellow('C-u / C-d')}   scroll up / down half a screen
+  ${chalk.yellow('g / G')}       scroll to bottom / top
+  ${chalk.yellow('r')}           restart a task and all its dependencies
+  ${chalk.yellow('s')}           save current task output to ./kubikstdoutstderr
+  ${chalk.yellow('z')}           toggle tasks sidebar pane
+  ${chalk.yellow('?')}           toggle help
+`;
 
 function renderScrollBar(options: {
   scrollTop: number,
@@ -62,6 +75,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   const [,setTick] = useState<number>(0);
 
   const [showTasks, setShowTasks] = useState<boolean>(true);
+  const [showHelp, setShowHelp] = useState<boolean>(false);
 
   const [projects, setProjects] = useState<Project[]>(workspace.topsortProjects());
   const [projectScroll, setProjectScroll] = useState<number|undefined>(undefined);
@@ -74,7 +88,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   const [terminalHeight, setTerminalHeight] = useState<number>(stdout.rows);
   const [terminalWidth, setTerminalWidth] = useState<number>(stdout.columns);
 
-  const selectedProject = projects.at(selectedTaskIndex);
+  const selectedProject = showHelp ? undefined : projects.at(selectedTaskIndex);
 
   useEffect(() => {
     stdout.on('resize', () => {
@@ -103,7 +117,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   // -1 for title
   const projectOutputHeight = terminalHeight - 1;
   // -2 for left border + scrollbar
-  const allLines = ansi2ink(selectedProject?.output() ?? '', outputWidth - 2);
+  const allLines = showHelp ? ansi2ink(HELP, outputWidth - 2) : ansi2ink(selectedProject?.output() ?? '', outputWidth - 2);
 
   const firstVisibleLineIndex = projectScroll ?? Math.max(allLines.length - projectOutputHeight, 0);
   const lines = allLines.slice(firstVisibleLineIndex, firstVisibleLineIndex + projectOutputHeight);
@@ -124,21 +138,28 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
       exit();
     } else if (input === 'z') {
       setShowTasks(!showTasks);
+    } else if (input === '?') {
+      setShowHelp(!showHelp);
+      setProjectScroll(undefined);
     } else if (input === 's') {
       fs.writeFileSync('./kubikstdoutstderr', selectedProject?.output() ?? '', 'utf8');
     } else if (input === 'r' && selectedProject) {
       workspace.scheduleUpdate(selectedProject);
     } else if (input === 'p' || (key.tab && key.shift)) {
       setSelectedTaskIndex((selectedTaskIndex - 1 + projects.length) % projects.length);
+      setShowHelp(false);
       setProjectScroll(undefined);
     } else if (input === 'P') {
       setSelectedTaskIndex(0);
+      setShowHelp(false);
       setProjectScroll(undefined);
     } else if (input === 'n' || key.tab) {
       setSelectedTaskIndex((selectedTaskIndex + 1 + projects.length) % projects.length);
+      setShowHelp(false);
       setProjectScroll(undefined);
     } else if (input === 'N') {
       setSelectedTaskIndex(projects.length - 1);
+      setShowHelp(false);
       setProjectScroll(undefined);
     } else if (input === 'g') {
       setProjectScroll(normalizeScrollLine(0));
@@ -158,14 +179,17 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   });
 
   let selectedTitle = '';
-  if (selectedProject) {
+  if (showHelp) {
+    
+  } else if (selectedProject) {
     selectedTitle = `${selectedProject.name()}${selectedProject.durationMs() > 0 ? ' – ' + humanReadableMs(selectedProject.durationMs()) : ''}`;
     selectedTitle = selectedTitle.padEnd(outputWidth, ' ');
   }
 
   return (
     <Box flexDirection="row" width={terminalWidth} height={terminalHeight}>
-      {showTasks ?  <Box
+      {showTasks ?
+        <Box
           flexDirection="column"
           flexShrink={0}
           width={taskListWidth}
@@ -177,13 +201,15 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
           borderBottom={false}
           borderLeft={false}
         >
-          <Text> <Text bold underline>Tasks</Text></Text>
+          <Text bold underline>Tasks</Text>
           {projects.map((project, index) => (
-            <Text key={project.id()} color={getStatusColor(project.status())} inverse={selectedTaskIndex === index}>
+            <Text key={project.id()} color={getStatusColor(project.status())} inverse={selectedTaskIndex === index && !showHelp}>
               <Text> {getStatusIndicator(project.status())} </Text>
               <Text wrap={'truncate-start'}>{project.name()} </Text>
             </Text>
           ))}
+          <Box flexGrow={1}></Box>
+          <Text inverse={showHelp}> ? Help </Text>
         </Box>
       : undefined}
 
