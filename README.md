@@ -11,11 +11,13 @@ Kubik supports running tasks with different parallelization modes and has a buil
 * [Getting Started](#getting-started)
 * [Tasks vs Services](#tasks-vs-services)
 * [Typescript Support](#typescript-support)
-* [Watch Mode TUI](#watch-mode-tui)
-* [Parallelization](#watch-mode)
+* [Kubik TUI](#kubik-tui)
+* [Colors in Kubik TUI](#colors-in-kubik-tui)
+* [Parallelization](#Parallelization)
 * [Environment Files](#environment-files)
 * [Shebang](#shebang-usage)
 * [API](#api)
+* [Limitations](#limitations)
 * [Debugging](#debugging)
 
 ## Quick Start
@@ -124,7 +126,7 @@ and use `.ts`/`.tsx` extension to write your scripts:
     ```
 
 
-## Watch Mode TUI
+## Kubik TUI
 
 Kubik supports watch mode where it listens for changes on the file system and reruns tasks and
 their dependencies. In this mode, Kubik shows a slick terminal application to observe & control task
@@ -246,6 +248,11 @@ await $`tsc --pretty -p .`;
 // then we can notify Kubik explicitly that the task has succeeded.
 Task.done();
 ```
+
+## Limitations
+
+* Kubik's TUI executes all tasks with a non-interactive terminal attached, which might
+  yield surprising behavior if an interactive input is assumed.
 
 ## Debugging
 
