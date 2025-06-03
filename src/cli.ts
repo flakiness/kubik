@@ -4,7 +4,7 @@ import chalk, { supportsColor } from "chalk";
 import { Option, program } from "commander";
 import path from "path";
 import { AbsolutePath } from "./configLoader.js";
-import { startWatchApp } from "./ui.js";
+import { startWatchApp } from "./tui.js";
 import { timeInSeconds } from "./utils.js";
 import { Project, Workspace } from "./workspace.js";
 
