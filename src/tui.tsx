@@ -30,7 +30,7 @@ ${chalk.bold('TUI Shortcuts')}
   ${chalk.yellow('N / P')}       select last / first task
   ${chalk.yellow('j / k')}       scroll up / down 1 line
   ${chalk.yellow('C-u / C-d')}   scroll up / down half a screen
-  ${chalk.yellow('g / G')}       scroll to bottom / top
+  ${chalk.yellow('g / G')}       scroll to top / bottom
   ${chalk.yellow('r')}           restart a task and all its dependencies
   ${chalk.yellow('s')}           save current task output to ./kubikstdoutstderr
   ${chalk.yellow('z')}           toggle tasks sidebar pane

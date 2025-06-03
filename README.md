@@ -146,7 +146,7 @@ There are a few shortcuts available to navigate inside the watch mode app:
 * `N / P`       select last / first task
 * `j / k`       scroll up / down 1 line
 * `C-u / C-d`   scroll up / down half a screen
-* `g / G`       scroll to bottom / top
+* `g / G`       scroll to top / bottom
 * `r`           restart a task and all its dependencies
 * `s`           save current task output to ./kubikstdoutstderr
 * `z`           toggle tasks sidebar pane
