@@ -35,6 +35,8 @@ ${chalk.bold('TUI Shortcuts')}
   ${chalk.yellow('s')}           save current task output to ./kubikstdoutstderr
   ${chalk.yellow('z')}           toggle tasks sidebar pane
   ${chalk.yellow('?')}           toggle help
+
+Kubik's home is at ${chalk.underline('https://github.com/flakiness/kubik')}, come visit!
 `;
 
 function renderScrollBar(options: {
@@ -68,6 +70,12 @@ function renderScrollBar(options: {
     <Text color={options.fgColor}>{'▐'.repeat(thumbHeight).split('').join('\n')}</Text>
     <Text color={options.bgColor}>{suffixText.split('').join('\n')}</Text>
   </Text>;
+}
+
+const Header: React.FC<{ text: string, width: number, color: string, }> = ({ width, text, color }) => {
+  return <Box flexShrink={0}>
+    <Text inverse={true} color={color}>{text.padEnd(width, ' ')}</Text>
+  </Box>
 }
 
 const ScrollableBox: React.FC<{ text: string, width: number, height: number }> = ({ width, height, text }) => {
@@ -147,10 +155,12 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
     workspace.on('project_added', project => {
       project.on('build_status_changed', () => setProjects(workspace.bfsProjects()));
       project.on('build_stdout', () => {
-        setTick(Date.now());
+        if (project === selectedProject)
+          setTick(Date.now());
       });
       project.on('build_stderr', () => {
-        setTick(Date.now());
+        if (project === selectedProject)
+          setTick(Date.now());
       });
     });
     workspace.on('projects_changed', () => setProjects(workspace.bfsProjects()));
@@ -190,14 +200,6 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
     }
   });
 
-  let selectedTitle = '';
-  if (showHelp) {
-    
-  } else if (selectedProject) {
-    selectedTitle = `${selectedProject.name()}${selectedProject.durationMs() > 0 ? ' – ' + humanReadableMs(selectedProject.durationMs()) : ''}`;
-    selectedTitle = selectedTitle.padEnd(outputWidth, ' ');
-  }
-
   return (
     <Box flexDirection="row" width={terminalWidth} height={terminalHeight}>
       {showTasks ?
@@ -233,10 +235,17 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
         overflow="hidden"
       >
         {selectedProject ? 
-          <Box flexShrink={0}>
-            <Text inverse={true} color={getStatusColor(selectedProject.status())}>{selectedTitle}</Text>
-          </Box>
-        : undefined}
+          <Header
+            color={getStatusColor(selectedProject.status())}
+            width={outputWidth}
+            text={`${selectedProject.name()}${selectedProject.durationMs() > 0 ? ' – ' + humanReadableMs(selectedProject.durationMs()) : ''}`}
+          ></Header>
+        : showHelp ? <Header
+            color='white'
+            width={outputWidth}
+            text='Kubik Help'
+          ></Header> : undefined
+        }
         <ScrollableBox
           key={selectedProject?.id()}
           width={outputWidth - 1}
