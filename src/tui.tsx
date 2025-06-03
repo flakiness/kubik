@@ -136,13 +136,9 @@ const ScrollableBox: React.FC<{ text: string, width: number, height: number }> =
 const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   // Force re-render
   const [,setTick] = useState<number>(0);
-
   const [showTasks, setShowTasks] = useState<boolean>(true);
-  
   const [mode, setMode] = useState<'stdio'|'help'|'config'>('stdio');
-
   const [projects, setProjects] = useState<Project[]>(workspace.bfsProjects());
-
   const [selectedTaskIndex, setSelectedTaskIndex] = useState<number>(0);
 
   const { exit } = useApp();
