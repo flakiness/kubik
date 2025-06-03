@@ -35,6 +35,11 @@ export type TaskUtils = {
    * An execa instance, with current working directory bound to script's directory.
    */
   $: ExecaScriptMethod,
+  /**
+   * Set to true if the script is being run under the Kubik's TUI.
+   * This is usually used to conditionally force colors in build scripts.
+   */
+  isTUI: boolean,
 }
 
 export class Task {
@@ -58,12 +63,9 @@ export class Task {
     return {
       __dirname: dirname,
       __filename: filename,
+      isTUI: !!process.env.KUBIK_TUI,
       $: $({ cwd: dirname, stdio: 'inherit' }),
     };
-  }
-
-  static isWatchMode(): boolean {
-    return !!process.env.KUBIK_WATCH_MODE;
   }
 
   /**

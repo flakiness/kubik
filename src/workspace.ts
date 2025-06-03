@@ -187,7 +187,7 @@ export class Project extends EventEmitter<ProjectEvents> {
         execArgv.push(`--env-file=${this._nodeForkOptions.envFile}`);
       const env: Record<string, string|undefined> = {
         ...process.env,
-        KUBIK_WATCH_MODE: this._fsWatch ? '1' : undefined,
+        KUBIK_TUI: this._fsWatch ? '1' : undefined,
         KUBIK_RUNNER: '1',
       };
       if (this._nodeForkOptions?.forceColors)

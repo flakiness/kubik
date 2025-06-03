@@ -153,7 +153,6 @@ There are a few shortcuts available to navigate inside the watch mode app:
 * `c`           toggle project configuration introspection
 * `?`           toggle help
 
-
 By default, Kubik watches for changes in files commonly involved in build tasks, such as:
 
 * `package.json`
@@ -176,6 +175,14 @@ Task.init(import.meta, {
 > then Kubik will re-run the build one time, causing "infinite" builds. You'll observe this
 > with tasks never completing.
 > Use `ignore` option to mitigate this behavior.
+
+## Colors in Kubik TUI
+
+Kubik TUI **does not** use terminal emulator to run task processes, so the processes don't have
+interactive terminal attached and might not render colors.
+
+Clients can manually override this behavior of their tools, using the `process.env.KUBIK_TUI` env
+variable to force tools to output colors.
 
 ## Parallelization
 
@@ -222,22 +229,22 @@ const {
   $, // execa shell runner, that uses __dirname as CWD
   __dirname, // **this** script directory absolute path
   __filename, // **this** script file absolute path
+  isTUI, // wether the script is being run with a non-interactive terminal under kubik's TUI.
+         // this is the same as `process.env.KUBIK_TUI`.
 } = Task.init(import.meta, {
   name: 'my library',
-  watch: ['./src'], // all the paths are resolved relative to this script
-  ignore: ['./src/generated'], // relative to this script
-  deps: ['../third-party/build.mjs'], // relative to this script
+  watch: ['./src'], // all the paths are resolved relative to **this** script
+  ignore: ['./src/generated'], // relative to **this** script
+  deps: ['../third-party/build.mjs'], // relative to **this** script
 });
-
-console.log(Task.isWatchMode()); // wether the script is being run under watch mode.
 
 // Use $ to run commands, e.g. typescript.
 // Note that $ uses __dirname as CWD.
 await $`tsc --pretty -p .`;
 
 // If node.js process does not exit (i.e. it runs a server),
-// then we can notify Kubik explicitly that the task is done.
-Task.done(); 
+// then we can notify Kubik explicitly that the task has succeeded.
+Task.done();
 ```
 
 ## Debugging
