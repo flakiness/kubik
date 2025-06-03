@@ -255,6 +255,22 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
     return result;
   }
 
+  bfs(): TASK_ID[] {
+    const result: TASK_ID[] = [];
+    const visited = new Set<Task<TASK_ID>>();
+    const queue: Task<TASK_ID>[] = this._roots.slice();
+    while (queue.length) {
+      const t = queue.shift()!;
+      if (visited.has(t))
+        continue;
+      visited.add(t);
+      result.push(t.taskId);
+      queue.push(...t.children);
+    }
+
+    return result;
+  }
+
   taskVersion(taskId: TASK_ID): string {
     const task = this._tasks.get(taskId);
     assert(task);

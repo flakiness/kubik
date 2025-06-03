@@ -77,7 +77,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   const [showTasks, setShowTasks] = useState<boolean>(true);
   const [showHelp, setShowHelp] = useState<boolean>(false);
 
-  const [projects, setProjects] = useState<Project[]>(workspace.topsortProjects());
+  const [projects, setProjects] = useState<Project[]>(workspace.bfsProjects());
   const [projectScroll, setProjectScroll] = useState<number|undefined>(undefined);
 
   const [selectedTaskIndex, setSelectedTaskIndex] = useState<number>(0);
@@ -96,7 +96,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
       setTerminalWidth(stdout.columns);
     });
     workspace.on('project_added', project => {
-      project.on('build_status_changed', () => setProjects(workspace.topsortProjects()));
+      project.on('build_status_changed', () => setProjects(workspace.bfsProjects()));
       project.on('build_stdout', () => {
         setTick(Date.now());
       });
@@ -104,7 +104,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
         setTick(Date.now());
       });
     });
-    workspace.on('projects_changed', () => setProjects(workspace.topsortProjects()));
+    workspace.on('projects_changed', () => setProjects(workspace.bfsProjects()));
     workspace.on('workspace_status_changed', () => {});
   }, []);
 

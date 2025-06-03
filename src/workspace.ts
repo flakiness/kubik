@@ -299,8 +299,8 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     return this._workspaceError;
   }
 
-  topsortProjects(): Project[] {
-    const taskIds = this._taskTree.topsort();
+  bfsProjects(): Project[] {
+    const taskIds = this._taskTree.bfs();
     return taskIds.map(taskId => this._projects.get(taskId)!);
   }
 

@@ -115,7 +115,7 @@ workspaceTest('should work', async ({ createWorkspace }) => {
   });
   const project = await onProjectAdded(workspace, 'a.mjs');
   await onProjectStatus(project, 'ok');
-  const projects = workspace.topsortProjects();
+  const projects = workspace.bfsProjects();
   expect(projects[0].output().trim()).toBe('done - b.mjs')
   expect(projects[1].output().trim()).toBe('done - c.mjs')
   expect(projects[2].output().trim()).toBe('done - a.mjs')
