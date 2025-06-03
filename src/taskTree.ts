@@ -271,6 +271,18 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
     return result;
   }
 
+  children(taskId: TASK_ID): TASK_ID[] {
+    const task = this._tasks.get(taskId);
+    assert(task);
+    return task.children.map(task => task.taskId);
+  }
+
+  parents(taskId: TASK_ID): TASK_ID[] {
+    const task = this._tasks.get(taskId);
+    assert(task);
+    return task.parents.map(task => task.taskId);
+  }
+
   taskVersion(taskId: TASK_ID): string {
     const task = this._tasks.get(taskId);
     assert(task);

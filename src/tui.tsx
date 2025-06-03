@@ -37,6 +37,7 @@ ${chalk.bold('TUI Shortcuts')}
   ${chalk.yellow('r')}           restart a task and all its dependencies
   ${chalk.yellow('s')}           save current task output to ./kubikstdoutstderr
   ${chalk.yellow('z')}           toggle tasks sidebar pane
+  ${chalk.yellow('c')}           toggle project configuration introspection
   ${chalk.yellow('?')}           toggle help
 
 Kubik's version is ${chalk.yellow(`v${packageJSON.version}`)}
@@ -137,7 +138,8 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   const [,setTick] = useState<number>(0);
 
   const [showTasks, setShowTasks] = useState<boolean>(true);
-  const [showHelp, setShowHelp] = useState<boolean>(false);
+  
+  const [mode, setMode] = useState<'stdio'|'help'|'config'>('stdio');
 
   const [projects, setProjects] = useState<Project[]>(workspace.bfsProjects());
 
@@ -149,7 +151,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   const [terminalHeight, setTerminalHeight] = useState<number>(stdout.rows);
   const [terminalWidth, setTerminalWidth] = useState<number>(stdout.columns);
 
-  const selectedProject = showHelp ? undefined : projects.at(selectedTaskIndex);
+  const selectedProject = projects.at(selectedTaskIndex);
 
   useEffect(() => {
     stdout.on('resize', () => {
@@ -184,23 +186,25 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
     } else if (input === 'z') {
       setShowTasks(!showTasks);
     } else if (input === '?') {
-      setShowHelp(!showHelp);
+      setMode(mode === 'help' ? 'stdio' : 'help');
+    } else if (input === 'c') {
+      setMode(mode === 'config' ? 'stdio' : 'config');
     } else if (input === 's') {
       fs.writeFileSync('./kubikstdoutstderr', selectedProject?.output() ?? '', 'utf8');
     } else if (input === 'r' && selectedProject) {
       workspace.scheduleUpdate(selectedProject);
     } else if (input === 'p' || (key.tab && key.shift)) {
       setSelectedTaskIndex((selectedTaskIndex - 1 + projects.length) % projects.length);
-      setShowHelp(false);
+      mode === 'help' && setMode('stdio');
     } else if (input === 'P') {
       setSelectedTaskIndex(0);
-      setShowHelp(false);
+      mode === 'help' && setMode('stdio');
     } else if (input === 'n' || key.tab) {
       setSelectedTaskIndex((selectedTaskIndex + 1 + projects.length) % projects.length);
-      setShowHelp(false);
+      mode === 'help' && setMode('stdio');
     } else if (input === 'N') {
       setSelectedTaskIndex(projects.length - 1);
-      setShowHelp(false);
+      mode === 'help' && setMode('stdio');
     }
   });
 
@@ -221,13 +225,13 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
         >
           <Text bold underline>Tasks</Text>
           {projects.map((project, index) => (
-            <Text key={project.id()} color={getStatusColor(project.status())} inverse={selectedTaskIndex === index && !showHelp}>
+            <Text key={project.id()} color={getStatusColor(project.status())} inverse={selectedTaskIndex === index && mode !== 'help'}>
               <Text> {getStatusIndicator(project.status())} </Text>
               <Text wrap={'truncate-start'}>{project.name()} </Text>
             </Text>
           ))}
           <Box flexGrow={1}></Box>
-          <Text inverse={showHelp}> ? Help </Text>
+          <Text inverse={mode === 'help'}> ? Help </Text>
         </Box>
       : undefined}
 
@@ -238,28 +242,62 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
         width={outputWidth}
         overflow="hidden"
       >
-        {selectedProject ? 
+        {mode === 'stdio' && selectedProject ? 
           <Header
             color={getStatusColor(selectedProject.status())}
             width={outputWidth}
-            text={`${selectedProject.name()}${selectedProject.durationMs() > 0 ? ' – ' + humanReadableMs(selectedProject.durationMs()) : ''}`}
+            text={`${selectedProject.name()}${selectedProject.durationMs() > 0 ? ' - ' + humanReadableMs(selectedProject.durationMs()) : ''}`}
           ></Header>
-        : showHelp ? <Header
+        : mode === 'help' ? <Header
             color='white'
             width={outputWidth}
             text='Kubik Help'
+          ></Header>
+        : mode === 'config' && selectedProject ? <Header
+            color='white'
+            width={outputWidth}
+            text={`Active Configuration`}
           ></Header> : undefined
         }
         <ScrollableBox
           key={selectedProject?.id()}
           width={outputWidth - 1}
           height={terminalHeight - 1}
-          text={showHelp ? HELP : selectedProject?.output() ?? ''}
+          text={
+            mode === 'help' ? HELP :
+            mode === 'stdio' ? selectedProject?.output() ?? '' :
+            mode === 'config' ? renderProjectConfig(workspace, selectedProject) : ''
+          }
         ></ScrollableBox>
       </Box>
     </Box>
   );
 };
+
+function renderProjectConfig(workspace: Workspace, project?: Project) {
+  if (!project)
+    return '';
+  const deps = workspace.directDependencies(project);
+  const isADepOf = workspace.directDependants(project);
+  return `
+name: ${chalk.yellow(project.name())}
+path: ${chalk.yellow(path.relative(process.cwd(), project.configPath()))}
+
+${chalk.bold(`Direct Dependencies: ${deps.length}`)}
+${deps.map(dep => `* ${dep.name()}`).join('\n')}
+
+${chalk.bold(`Direct Dependants: ${isADepOf.length}`)}
+${isADepOf.map(dep => `* ${dep.name()}`).join('\n')}
+
+${chalk.bold(`watched paths: ${project.introspectWatchPaths().length}`)}
+${project.introspectWatchPaths().map(p => `+ ${path.relative(process.cwd(), p)}`).join('\n')}
+
+${chalk.bold(`ignored paths: ${project.introspectIgnorePaths().length}`)}
+${project.introspectIgnorePaths().map(p => `- ${path.relative(process.cwd(), p)}`).join('\n')}
+
+`;
+
+}
 
 export function startWatchApp(workspace: Workspace) {
   // Enter alternative buffer.

@@ -49,6 +49,8 @@ export class Project extends EventEmitter<ProjectEvents> {
   private _configPath: AbsolutePath;
   private _taskTree: TaskTree<AbsolutePath>;
 
+  private _watchPaths: AbsolutePath[] = [];
+  private _ignorePaths: AbsolutePath[] = [];
   private _fsWatch?: FSWatcher;
   
   private _customName?: string;
@@ -86,19 +88,30 @@ export class Project extends EventEmitter<ProjectEvents> {
     });
   }
 
+  introspectWatchPaths() {
+    return this._watchPaths;
+  }
+
+  introspectIgnorePaths() {
+    return this._ignorePaths;
+  }
+
   async startFileWatch(toWatch: AbsolutePath[], toIgnore: AbsolutePath[], onFilesChanged?: (project: Project, filePath: AbsolutePath) => void) {
     await this.stopFileWatch();
 
+    // Save arguments for the watch dog to show them later in the TUI.
+    this._watchPaths = toWatch.slice();
+    this._ignorePaths = toIgnore.slice();
     // Also, start watching for tsconfig.json, package.json, package-lock.json by default.
     const configDir = path.dirname(this._configPath) as AbsolutePath;
-    toWatch.push(...[
+    this._watchPaths.push(...[
       this._configPath,
       toAbsolutePath(configDir, 'tsconfig.json'),
       toAbsolutePath(configDir, 'package.json'),
       toAbsolutePath(configDir, 'package-lock.json'),
     ]);
-    this._fsWatch = chokidar.watch(toWatch, {
-      ignored: toIgnore,
+    this._fsWatch = chokidar.watch(this._watchPaths, {
+      ignored: this._ignorePaths,
       persistent: true,
       ignoreInitial: true,
     });
@@ -301,6 +314,16 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
 
   bfsProjects(): Project[] {
     const taskIds = this._taskTree.bfs();
+    return taskIds.map(taskId => this._projects.get(taskId)!);
+  }
+
+  directDependencies(project: Project): Project[] {
+    const taskIds = this._taskTree.children(project.configPath());
+    return taskIds.map(taskId => this._projects.get(taskId)!);
+  }
+
+  directDependants(project: Project): Project[] {
+    const taskIds = this._taskTree.parents(project.configPath());
     return taskIds.map(taskId => this._projects.get(taskId)!);
   }
 

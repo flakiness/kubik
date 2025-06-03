@@ -150,6 +150,7 @@ There are a few shortcuts available to navigate inside the watch mode app:
 * `r`           restart a task and all its dependencies
 * `s`           save current task output to ./kubikstdoutstderr
 * `z`           toggle tasks sidebar pane
+* `c`           toggle project configuration introspection
 * `?`           toggle help
 
 
