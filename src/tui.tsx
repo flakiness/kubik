@@ -128,7 +128,6 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   const [showHelp, setShowHelp] = useState<boolean>(false);
 
   const [projects, setProjects] = useState<Project[]>(workspace.bfsProjects());
-  const [projectScroll, setProjectScroll] = useState<number|undefined>(undefined);
 
   const [selectedTaskIndex, setSelectedTaskIndex] = useState<number>(0);
 
@@ -172,7 +171,6 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
       setShowTasks(!showTasks);
     } else if (input === '?') {
       setShowHelp(!showHelp);
-      setProjectScroll(undefined);
     } else if (input === 's') {
       fs.writeFileSync('./kubikstdoutstderr', selectedProject?.output() ?? '', 'utf8');
     } else if (input === 'r' && selectedProject) {
@@ -180,19 +178,15 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
     } else if (input === 'p' || (key.tab && key.shift)) {
       setSelectedTaskIndex((selectedTaskIndex - 1 + projects.length) % projects.length);
       setShowHelp(false);
-      setProjectScroll(undefined);
     } else if (input === 'P') {
       setSelectedTaskIndex(0);
       setShowHelp(false);
-      setProjectScroll(undefined);
     } else if (input === 'n' || key.tab) {
       setSelectedTaskIndex((selectedTaskIndex + 1 + projects.length) % projects.length);
       setShowHelp(false);
-      setProjectScroll(undefined);
     } else if (input === 'N') {
       setSelectedTaskIndex(projects.length - 1);
       setShowHelp(false);
-      setProjectScroll(undefined);
     }
   });
 
