@@ -70,6 +70,56 @@ function renderScrollBar(options: {
   </Text>;
 }
 
+const ScrollableBox: React.FC<{ text: string, width: number, height: number }> = ({ width, height, text }) => {
+  const [scrollTop, setScrollTop] = useState<number|undefined>(undefined);
+  const allLines = ansi2ink(text, width - 1);
+
+  const normalizeScrollLine = (firstLineNumber: number) => {
+    if (firstLineNumber < 0)
+      firstLineNumber = 0;
+    if (allLines.length <= height)
+      return undefined;
+    if (firstLineNumber + height >= allLines.length)
+      return undefined;
+    return firstLineNumber;
+  }
+
+  const firstVisibleLineIndex = scrollTop ?? Math.max(allLines.length - height, 0);
+  const lines = allLines.slice(firstVisibleLineIndex, firstVisibleLineIndex + height);
+
+  // --- Input Handling ---
+  useInput((input, key) => {
+    if (input === 'g') {
+      setScrollTop(normalizeScrollLine(0));
+    } else if (input === 'G') {
+      setScrollTop(normalizeScrollLine(allLines.length));
+    } else if ((input === 'u' && key.ctrl) || (key.shift && input === ' ')) {
+      setScrollTop(normalizeScrollLine(firstVisibleLineIndex - (height >> 1)));
+    } else if ((input === 'd' && key.ctrl) || (!key.shift && input === ' ')) {
+      setScrollTop(normalizeScrollLine(firstVisibleLineIndex + (height >> 1)));
+    } else if (input === 'k' || key.upArrow) {
+      setScrollTop(normalizeScrollLine(firstVisibleLineIndex - 1));
+    } else if (input === 'j' || key.downArrow) {
+      setScrollTop(normalizeScrollLine(firstVisibleLineIndex + 1));
+    }
+  });
+
+  return <Box flexDirection="row">
+    <Box flexGrow={1}>
+      <Text>{lines}</Text>
+    </Box>
+    <Box overflow="hidden" height="100%" width={1}>
+      {renderScrollBar({
+        height,
+        scrollHeight: allLines.length,
+        scrollTop: firstVisibleLineIndex,
+        bgColor: 'gray',
+        fgColor: 'gray',
+      })}
+    </Box>
+  </Box>
+}
+
 const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   // Force re-render
   const [,setTick] = useState<number>(0);
@@ -114,24 +164,6 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   const taskListWidth = showTasks ? Math.max(Math.min(maxProjectWidth + 5, maxWidth), 10) : 0;
   const outputWidth = terminalWidth - taskListWidth;
 
-  // -1 for title
-  const projectOutputHeight = terminalHeight - 1;
-  // -2 for left border + scrollbar
-  const allLines = showHelp ? ansi2ink(HELP, outputWidth - 2) : ansi2ink(selectedProject?.output() ?? '', outputWidth - 2);
-
-  const firstVisibleLineIndex = projectScroll ?? Math.max(allLines.length - projectOutputHeight, 0);
-  const lines = allLines.slice(firstVisibleLineIndex, firstVisibleLineIndex + projectOutputHeight);
-
-  const normalizeScrollLine = (firstLineNumber: number) => {
-    if (firstLineNumber < 0)
-      firstLineNumber = 0;
-    if (allLines.length <= projectOutputHeight)
-      return undefined;
-    if (firstLineNumber + projectOutputHeight >= allLines.length)
-      return undefined;
-    return firstLineNumber;
-  }
-
   // --- Input Handling ---
   useInput((input, key) => {
     if (input === 'q' || (key.ctrl && input === 'c')) {
@@ -161,20 +193,6 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
       setSelectedTaskIndex(projects.length - 1);
       setShowHelp(false);
       setProjectScroll(undefined);
-    } else if (input === 'g') {
-      setProjectScroll(normalizeScrollLine(0));
-    } else if (input === 'G') {
-      setProjectScroll(normalizeScrollLine(allLines.length));
-    } else if ((input === 'u' && key.ctrl) || (key.shift && input === ' ')) {
-      setProjectScroll(normalizeScrollLine(firstVisibleLineIndex - (projectOutputHeight >> 1)));
-    } else if ((input === 'd' && key.ctrl) || (!key.shift && input === ' ')) {
-      setProjectScroll(normalizeScrollLine(firstVisibleLineIndex + (projectOutputHeight >> 1)));
-    } else if (input === 'k' || key.upArrow) {
-      setProjectScroll(normalizeScrollLine(firstVisibleLineIndex - 1));
-      // Scroll up
-    } else if (input === 'j' || key.downArrow) {
-      // Scroll down
-      setProjectScroll(normalizeScrollLine(firstVisibleLineIndex + 1));
     }
   });
 
@@ -225,22 +243,12 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
             <Text inverse={true} color={getStatusColor(selectedProject.status())}>{selectedTitle}</Text>
           </Box>
         : undefined}
-        <Box
-          flexDirection="row"
-        >
-          <Box flexGrow={1}>
-            <Text>{lines}</Text>
-          </Box>
-          <Box overflow="hidden" height="100%" width={1}>
-            {renderScrollBar({
-              height: terminalHeight - 1,
-              scrollHeight: allLines.length,
-              scrollTop: firstVisibleLineIndex,
-              bgColor: 'gray',
-              fgColor: 'gray',
-            })}
-          </Box>
-        </Box>
+        <ScrollableBox
+          key={selectedProject?.id()}
+          width={outputWidth - 1}
+          height={terminalHeight - 1}
+          text={showHelp ? HELP : selectedProject?.output() ?? ''}
+        ></ScrollableBox>
       </Box>
     </Box>
   );
