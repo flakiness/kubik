@@ -20,7 +20,7 @@ const getStatusIndicator = (status: TaskStatus) => {
   switch (status) {
     case 'running': return chalk.yellow('●'); // Or use spinners if you add ink-spinner
     case 'ok': return chalk.green('✓');
-    case 'fail': return chalk.red('-');
+    case 'fail': return chalk.red('x');
     default: return chalk.gray('○');
   }
 };
