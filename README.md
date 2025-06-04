@@ -9,13 +9,15 @@ Kubik supports running tasks with different parallelization modes and has a buil
 
 * [Quick Start](#quick-start)
 * [Getting Started](#getting-started)
-* [Tasks vs Services](#tasks-vs-services)
+* [Task Dependencies](#task-dependencies)
+* [Multiple Roots](#multiple-roots)
+* [Tasks vs Services](#running-services)
 * [TypeScript Support](#typescript-support)
 * [Kubik TUI](#kubik-tui)
 * [Colors in Kubik TUI](#colors-in-kubik-tui)
 * [Parallelization](#parallelization)
 * [Environment Files](#environment-files)
-* [Shebang](#shebang-usage)
+* [Shebang](#shebang)
 * [API](#api)
 * [Limitations](#limitations)
 * [Debugging](#debugging)
@@ -44,7 +46,31 @@ Use the following commands to run tasks:
 
 A real-life example is [available here](https://github.com/flakiness/kubik/blob/main/bootstrap/build.mjs).
 
-## Task dependencies
+## Getting Started
+
+To start using Kubik in your project:
+
+1. Install Kubik:
+   ```sh
+   npm install --save-dev kubik
+   ```
+
+2. Create a build script (e.g., `build.mjs`):
+   ```js
+   import { Task } from 'kubik';
+   
+   const { $ } = Task.init(import.meta);
+   
+   // Your build logic here
+   await $`echo "Hello, Kubik!"`;
+   ```
+
+3. Run your task:
+   ```sh
+   npx kubik ./build.mjs
+   ```
+
+## Task Dependencies
 
 Kubik allows defining dependencies between tasks using the `deps` option in the `Task.init` method:
 
@@ -59,13 +85,18 @@ Task.init(import.meta, {
 // ... run some tasks
 ```
 
-To run tasks with their dependencies to completion, run:
+When you run a task with dependencies:
+1. Kubik first executes all dependency tasks in parallel (unless limited by the `-j` flag)
+2. Only after all dependencies complete successfully will the main task start
+3. If any dependency fails, the main task won't execute
+
+To run tasks with their dependencies to completion:
 
 ```bash
 npx kubik ./build-main.mjs
 ```
 
-## Multiple roots
+## Multiple Roots
 
 In complicated projects, it might be necessary to build a project from multiple entry points.
 In this case, you can pass multiple entry points to Kubik:
@@ -74,10 +105,12 @@ In this case, you can pass multiple entry points to Kubik:
 npx kubik ./build-main.mjs ./build-other.mjs
 ```
 
-In this case, if both `build-main.mjs` and `build-other.mjs` depend on `shared.mjs` task, then
-the task will be executed only once.
+When using multiple roots:
+- Kubik builds a unified dependency graph across all entry points
+- If multiple tasks depend on the same task (e.g., both `build-main.mjs` and `build-other.mjs` depend on `shared.mjs`), the shared task will be executed only once
+- Tasks are identified by their absolute file paths, so tasks with the same filename but in different directories are treated as separate tasks
 
-## Running services
+## Running Services
 
 By default, a task is considered successful if its process completes with a 0 exit code, and
 unsuccessful if it fails with a non-zero code.
@@ -91,10 +124,16 @@ import { Task } from 'kubik';
 
 Task.init(import.meta);
 
-// ...launch HTTP server... 
-// Report the task as complete.
-Task.done();
+// Start an HTTP server
+const server = http.createServer(/*...*/);
+server.listen(3000, () => {
+  console.log('Server running on port 3000');
+  // Report the task as complete so dependents can start
+  Task.done();
+});
 ```
+
+This allows long-running services to coexist with build tasks in your dependency graph.
 
 ## TypeScript support
 
@@ -176,6 +215,11 @@ Task.init(import.meta, {
 > NOTE: Be careful with watch mode: if the build procedure changes some of the watched files,
 > then Kubik will re-run the build one more time, causing "infinite" builds. You'll observe this
 > with tasks never completing.
+> Common scenarios that cause this issue:
+> - Watching output directories that your build writes to
+> - Watching temporary files that are modified during the build
+> - Not properly ignoring generated files
+>
 > Use the `ignore` option to mitigate this behavior.
 
 ## Colors in Kubik TUI
@@ -184,11 +228,38 @@ Kubik TUI **does not** use terminal emulator to run task processes, so the proce
 an interactive terminal attached and might not render colors.
 
 Clients can manually override this behavior of their tools using the `process.env.KUBIK_TUI` env
-variable to force tools to output colors.
+variable to force tools to output colors. For example:
+
+```js
+// In your build script
+import { Task } from 'kubik';
+
+const { $, isTUI } = Task.init(import.meta);
+
+// Force colors in tools that check for TTY
+if (isTUI) {
+  await $`jest --colors`;
+} else {
+  await $`jest`;
+}
+```
+
+Many tools like Jest, ESLint, and TypeScript have flags to force color output that you can use when `isTUI` is true.
 
 ## Parallelization
 
 Kubik supports the `-j, --jobs <number>` flag to customize the number of parallel jobs. By default, Kubik allows an unlimited number of parallel jobs.
+
+Examples:
+```sh
+# Run with at most 2 parallel tasks
+npx kubik -j 2 ./build.mjs
+
+# Run tasks sequentially (one at a time)
+npx kubik -j 1 ./build.mjs
+```
+
+This is particularly useful for resource-intensive tasks or when debugging complex build processes.
 
 ## Environment Files
 
@@ -215,7 +286,15 @@ Task.init(import.meta, {
 });
 ```
 
+This allows you to run the script directly as an executable (after making it executable with `chmod +x`):
+
+```sh
+./build.mjs
+```
+
 ## API
+
+Kubik provides a simple API centered around the `Task` class, which helps set up and manage your build tasks.
 
 The `Task.init` function prepares the build environment, offering utilities like `$` for shell commands (powered by [execa](https://github.com/sindresorhus/execa)), `__dirname`, and `__filename` based on the current script's context. 
 
@@ -253,6 +332,8 @@ Task.done();
 
 * Kubik's TUI executes all tasks with a non-interactive terminal attached, which might
   yield surprising behavior if interactive input is assumed.
+* Dependency cycles between tasks are not allowed and will cause an error.
+* All tasks must be accessible via the filesystem (no remote tasks).
 
 ## Debugging
 
@@ -262,4 +343,10 @@ directly by node.js, with no Kubik in the way.
 ```bash
 node ./build-main.mjs
 ```
+
+This is useful for:
+- Debugging script logic issues
+- Testing scripts in isolation without dependencies
+- Using Node.js debugging tools like `--inspect`
+
 
