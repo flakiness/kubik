@@ -140,7 +140,7 @@ npx kubik -w ./build.mjs
 
 In watch mode, Kubik launches a terminal app that shows progress, duration and logs from all the tasks:
 
-<img width="600" alt="Screenshot 2024-11-13 at 11 24 57 AM" src="https://github.com/user-attachments/assets/3cf03c48-0081-42f1-9f29-a79c905f9afb">
+<img width="600" alt="Kubik terminal app" src="https://github.com/user-attachments/assets/d97e00ca-069f-4ee8-b92b-f085d1a1e368">
 
 There are a few shortcuts available to navigate inside the watch mode app:
 
