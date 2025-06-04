@@ -2,18 +2,18 @@
 
 > ⚠️ **Warning:** Kubik is currently in pre-1.0.0 release. Expect potential changes and experimental features that may not be fully stable yet.
 
-**Kubik** is a simple task runner for node.js with first-class TypeScript support.
+**Kubik** is a simple task runner for Node.js with first-class TypeScript support.
 
-Kubik tasks are defined by TypeScript / Node.js scripts, with dependencies to other tasks.
+Kubik tasks are defined by TypeScript/Node.js scripts, with dependencies to other tasks.
 Kubik supports running tasks with different parallelization modes and has a built-in watch mode.
 
 * [Quick Start](#quick-start)
 * [Getting Started](#getting-started)
 * [Tasks vs Services](#tasks-vs-services)
-* [Typescript Support](#typescript-support)
+* [TypeScript Support](#typescript-support)
 * [Kubik TUI](#kubik-tui)
 * [Colors in Kubik TUI](#colors-in-kubik-tui)
-* [Parallelization](#Parallelization)
+* [Parallelization](#parallelization)
 * [Environment Files](#environment-files)
 * [Shebang](#shebang-usage)
 * [API](#api)
@@ -22,7 +22,7 @@ Kubik supports running tasks with different parallelization modes and has a buil
 
 ## Quick Start
 
-Any `build.(m)js` script can be converted to a task by importing `Task` and running `Task.init` in the
+Any `build.(m)js` script can be converted to a task by importing `Task` and running `Task.init` at the
 very beginning of the script:
 
 ```ts
@@ -46,7 +46,7 @@ A real-life example is [available here](https://github.com/flakiness/kubik/blob/
 
 ## Task dependencies
 
-Kubik allows defining dependencies between tasks using `deps` option in the `Task.init` method:
+Kubik allows defining dependencies between tasks using the `deps` option in the `Task.init` method:
 
 ```js
 // build-main.mjs
@@ -67,7 +67,7 @@ npx kubik ./build-main.mjs
 
 ## Multiple roots
 
-In a complicated projects, it might be necessary to build a project from multiple entry points.
+In complicated projects, it might be necessary to build a project from multiple entry points.
 In this case, you can pass multiple entry points to Kubik:
 
 ```bash
@@ -79,11 +79,11 @@ the task will be executed only once.
 
 ## Running services
 
-By default, task is considered successful if its process completes with 0 exit code, and
-unsuccessful if it fails with non-zero code.
+By default, a task is considered successful if its process completes with a 0 exit code, and
+unsuccessful if it fails with a non-zero code.
 
-However, certain tasks require a running process; for example, launching development server.
-In this case, you can use `Task.done()` to notify Kubik that the task completed and it's dependants
+However, certain tasks require a running process; for example, launching a development server.
+In this case, you can use `Task.done()` to notify Kubik that the task completed and its dependents
 can start executing:
 
 ```ts
@@ -98,8 +98,8 @@ Task.done();
 
 ## TypeScript support
 
-Kubik supports running tasks defined in a `.ts` / `.mts` files using [tsx](https://github.com/privatenumber/tsx). To use typescript, simply install `tsx` along side with kubik, 
-and use `.ts`/`.tsx` extension to write your scripts:
+Kubik supports running tasks defined in `.ts`/`.mts` files using [tsx](https://github.com/privatenumber/tsx). To use TypeScript, simply install `tsx` alongside Kubik, 
+and use `.ts`/`.mts` extensions to write your scripts:
 
 1. Install `tsx`:
 
@@ -107,7 +107,7 @@ and use `.ts`/`.tsx` extension to write your scripts:
     npm i --save-dev tsx
     ```
 
-1. Write your scripts in a `.ts` or `.mts` files:
+2. Write your scripts in `.ts` or `.mts` files:
 
     ```ts
     // hello.ts
@@ -119,7 +119,7 @@ and use `.ts`/`.tsx` extension to write your scripts:
     console.log(foo);
     ```
 
-1. Run your tasks as usual:
+3. Run your tasks as usual:
 
     ```sh
     npx kubik ./hello.ts
@@ -132,7 +132,7 @@ Kubik supports watch mode where it listens for changes on the file system and re
 their dependencies. In this mode, Kubik shows a slick terminal application to observe & control task
 execution.
 
-To run watch mode, use `-w` or `--watch` flag:
+To run watch mode, use the `-w` or `--watch` flag:
 
 ```sh
 npx kubik -w ./build.mjs
@@ -142,7 +142,7 @@ In watch mode, Kubik launches a terminal app that shows progress, duration and l
 
 <img width="600" alt="Kubik terminal app" src="https://github.com/user-attachments/assets/d97e00ca-069f-4ee8-b92b-f085d1a1e368">
 
-There are a few shortcuts available to navigate inside the watch mode app:
+There are several shortcuts available to navigate inside the watch mode app:
 
 * `n / p`       select next / previous task
 * `N / P`       select last / first task
@@ -174,31 +174,31 @@ Task.init(import.meta, {
 ```
 
 > NOTE: Be careful with watch mode: if the build procedure changes some of the watched files,
-> then Kubik will re-run the build one time, causing "infinite" builds. You'll observe this
+> then Kubik will re-run the build one more time, causing "infinite" builds. You'll observe this
 > with tasks never completing.
-> Use `ignore` option to mitigate this behavior.
+> Use the `ignore` option to mitigate this behavior.
 
 ## Colors in Kubik TUI
 
 Kubik TUI **does not** use terminal emulator to run task processes, so the processes don't have
-interactive terminal attached and might not render colors.
+an interactive terminal attached and might not render colors.
 
-Clients can manually override this behavior of their tools, using the `process.env.KUBIK_TUI` env
+Clients can manually override this behavior of their tools using the `process.env.KUBIK_TUI` env
 variable to force tools to output colors.
 
 ## Parallelization
 
-Kubik supports `-j, --jobs <number>` flag to customize number of parallel jobs. By default, Kubik allows an unlimited number of parallel jobs.
+Kubik supports the `-j, --jobs <number>` flag to customize the number of parallel jobs. By default, Kubik allows an unlimited number of parallel jobs.
 
 ## Environment Files
 
-Kubik supports `-e, --env-file <env file>` flag to load environment variables from a file.
+Kubik supports the `-e, --env-file <env file>` flag to load environment variables from a file.
 
 ```bash
 npx kubik -e .env ./build.mjs
 ```
 
-This will load all the environment variables from `.env` file, and pass them to all scripts.
+This will load all the environment variables from the `.env` file and pass them to all scripts.
 
 ## Shebang
 
@@ -231,7 +231,7 @@ const {
   $, // execa shell runner, that uses __dirname as CWD
   __dirname, // **this** script directory absolute path
   __filename, // **this** script file absolute path
-  isTUI, // wether the script is being run with a non-interactive terminal under kubik's TUI.
+  isTUI, // whether the script is being run with a non-interactive terminal under kubik's TUI.
          // this is the same as `process.env.KUBIK_TUI`.
 } = Task.init(import.meta, {
   name: 'my library',
@@ -252,7 +252,7 @@ Task.done();
 ## Limitations
 
 * Kubik's TUI executes all tasks with a non-interactive terminal attached, which might
-  yield surprising behavior if an interactive input is assumed.
+  yield surprising behavior if interactive input is assumed.
 
 ## Debugging
 
