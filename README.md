@@ -11,7 +11,7 @@ Kubik supports running tasks with different parallelization modes and has a buil
 * [Getting Started](#getting-started)
 * [Task Dependencies](#task-dependencies)
 * [Multiple Roots](#multiple-roots)
-* [Tasks vs Services](#running-services)
+* [Long-running processes](#long-running-processes)
 * [TypeScript Support](#typescript-support)
 * [Kubik TUI](#kubik-tui)
 * [Colors in Kubik TUI](#colors-in-kubik-tui)
@@ -110,7 +110,7 @@ When using multiple roots:
 - If multiple tasks depend on the same task (e.g., both `build-main.mjs` and `build-other.mjs` depend on `shared.mjs`), the shared task will be executed only once
 - Tasks are identified by their absolute file paths, so tasks with the same filename but in different directories are treated as separate tasks
 
-## Running Services
+## Long-running processes
 
 By default, a task is considered successful if its process completes with a 0 exit code, and
 unsuccessful if it fails with a non-zero code.
