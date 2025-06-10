@@ -63,6 +63,9 @@ export class Project extends EventEmitter<ProjectEvents> {
   private _stopTimestampMs?: number = Date.now();
   private _subprocess?: ChildProcess;
 
+  private _isLongRunningProcess: boolean = false;
+  private _processExitCode?: number|null;
+
   constructor(taskTree: TaskTree<AbsolutePath>, configPath: AbsolutePath, nodeForkOptions?: NodeForkOptions) {
     super();
     this.setMaxListeners(Infinity);
@@ -155,6 +158,18 @@ export class Project extends EventEmitter<ProjectEvents> {
     return this._taskTree.taskStatus(this._configPath);
   }
 
+  isLongRunningProcess() {
+    return this._isLongRunningProcess;
+  }
+
+  pid() {
+    return this._subprocess?.pid;
+  }
+
+  exitCode() {
+    return this._processExitCode;
+  }
+
   id() {
     return this._configPath;
   }
@@ -213,9 +228,11 @@ export class Project extends EventEmitter<ProjectEvents> {
         if (msg !== MSG_TASK_DONE)
           return;
         this._stopTimestampMs = Date.now();
+        this._isLongRunningProcess = true;
         options.onComplete(true);
       });
       this._subprocess.on('close', code => {
+        this._processExitCode = code;
         // The process might've reported its status with `Task.done()`, and then
         // terminate. In this case, we need to log its output code.
         if (this._taskTree.taskStatus(this._configPath) === 'running') {
@@ -225,13 +242,17 @@ export class Project extends EventEmitter<ProjectEvents> {
           this._onStdOut(`(process exited with code=${code})`);
         }
         this._killProcess();
+        this.emit('build_status_changed');
       });
       this._subprocess.on('error', error => {
         options.onComplete(false);
         this._onStdErr(error.message);
         this._stopTimestampMs = Date.now();
         this._killProcess();
+        this.emit('build_status_changed');
       });
+      // Emit "build_status_changed" since we created a subprocess, and our PID has changed.
+      this.emit('build_status_changed');
     } catch (e) {
       this._output = `Failed to launch ${path.relative(process.cwd(), this._configPath)}\n`;
       if (e instanceof Error)

@@ -4,11 +4,15 @@ import { Box, render, Text, useApp, useInput, useStdout } from 'ink';
 import path from 'path';
 import React, { JSX, useEffect, useState } from 'react';
 import { ansi2ink } from './ansi2ink.js';
-import { TaskStatus } from './taskTree.js';
 import { Project, Workspace } from './workspace.js';
 
-const getStatusColor = (status: TaskStatus) => {
-  switch (status) {
+const getStatusColor = (project: Project) => {
+  if (project.isLongRunningProcess() && project.status() === 'ok') {
+    if (project.pid())
+      return 'green'
+    return 'red';
+  }
+  switch (project.status()) {
     case 'running': return 'yellow';
     case 'ok': return 'green';
     case 'fail': return 'red';
@@ -16,12 +20,17 @@ const getStatusColor = (status: TaskStatus) => {
   }
 };
 
-const getStatusIndicator = (status: TaskStatus) => {
-  switch (status) {
-    case 'running': return chalk.yellow('●'); // Or use spinners if you add ink-spinner
-    case 'ok': return chalk.green('✓');
-    case 'fail': return chalk.red('x');
-    default: return chalk.gray('○');
+const getStatusIndicator = (project: Project) => {
+  if (project.isLongRunningProcess() && project.status() === 'ok') {
+    if (project.pid())
+      return ('@');
+    return ('x');
+  }
+  switch (project.status()) {
+    case 'running': return ('●');
+    case 'ok': return ('✓');
+    case 'fail': return ('x');
+    default: return ('○');
   }
 };
 
@@ -219,8 +228,8 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
         >
           <Text bold underline>Tasks</Text>
           {projects.map((project, index) => (
-            <Text key={project.id()} color={getStatusColor(project.status())} inverse={selectedTaskIndex === index && mode !== 'help'}>
-              <Text> {getStatusIndicator(project.status())} </Text>
+            <Text key={project.id()} color={getStatusColor(project)} inverse={selectedTaskIndex === index && mode !== 'help'}>
+              <Text> {getStatusIndicator(project)} </Text>
               <Text wrap={'truncate-start'}>{project.name()} </Text>
             </Text>
           ))}
@@ -238,9 +247,9 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
       >
         {mode === 'stdio' && selectedProject ? 
           <Header
-            color={getStatusColor(selectedProject.status())}
+            color={getStatusColor(selectedProject)}
             width={outputWidth}
-            text={`${selectedProject.name()}${selectedProject.durationMs() > 0 ? ' - ' + humanReadableMs(selectedProject.durationMs()) : ''}`}
+            text={`${selectedProject.name()}${selectedProject.durationMs() > 0 ? ' time=' + humanReadableMs(selectedProject.durationMs()) : ''}${selectedProject.pid() ? ` pid=${selectedProject.pid()}` : ''}${typeof selectedProject.exitCode() === 'number' ? ` exit_code=${selectedProject.exitCode()}` : ''}`}
           ></Header>
         : mode === 'help' ? <Header
             color='white'
