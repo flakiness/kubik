@@ -115,9 +115,12 @@ When using multiple roots:
 By default, a task is considered successful if its process completes with a 0 exit code, and
 unsuccessful if it fails with a non-zero code.
 
-However, certain tasks require a running process; for example, launching a development server.
-In this case, you can use `Task.done()` to notify Kubik that the task completed and its dependents
-can start executing:
+However, Kubik can be used to organize efficient local development workflow, launching and re-launching
+devservers and other long-running developer processes. This usually makes sense with the `-w/--watch` flag, that
+kicks in Kubik TUI.
+
+You can use `Task.done()` to notify Kubik that the task completed and its dependents
+can start executing. In this case, Kubik will mark this task with `@` in the TUI.
 
 ```ts
 import { Task } from 'kubik';
@@ -191,7 +194,7 @@ There are several shortcuts available to navigate inside the watch mode app:
 * `r`           restart a task and all its dependencies
 * `s`           save current task output to ./kubikstdoutstderr
 * `z`           toggle tasks sidebar pane
-* `c`           toggle project configuration introspection
+* `i`           toggle task information
 * `?`           toggle help
 
 By default, Kubik watches for changes in files commonly involved in build tasks, such as:

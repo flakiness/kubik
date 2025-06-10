@@ -46,7 +46,7 @@ ${chalk.bold('TUI Shortcuts')}
   ${chalk.yellow('r')}           restart a task and all its dependencies
   ${chalk.yellow('s')}           save current task output to ./kubikstdoutstderr
   ${chalk.yellow('z')}           toggle tasks sidebar pane
-  ${chalk.yellow('c')}           toggle project configuration introspection
+  ${chalk.yellow('i')}           toggle task information
   ${chalk.yellow('?')}           toggle help
 
 Kubik's version is ${chalk.yellow(`v${packageJSON.version}`)}
@@ -146,7 +146,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   // Force re-render
   const [,setTick] = useState<number>(0);
   const [showTasks, setShowTasks] = useState<boolean>(true);
-  const [mode, setMode] = useState<'stdio'|'help'|'config'>('stdio');
+  const [mode, setMode] = useState<'stdio'|'help'|'info'>('stdio');
   const [projects, setProjects] = useState<Project[]>(workspace.bfsProjects());
   const [selectedTaskIndex, setSelectedTaskIndex] = useState<number>(0);
 
@@ -190,8 +190,8 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
       setShowTasks(!showTasks);
     } else if (input === '?') {
       setMode(mode === 'help' ? 'stdio' : 'help');
-    } else if (input === 'c') {
-      setMode(mode === 'config' ? 'stdio' : 'config');
+    } else if (input === 'i') {
+      setMode(mode === 'info' ? 'stdio' : 'info');
     } else if (input === 's') {
       fs.writeFileSync('./kubikstdoutstderr', selectedProject?.output() ?? '', 'utf8');
     } else if (input === 'r' && selectedProject) {
@@ -256,10 +256,10 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
             width={outputWidth}
             text='Kubik Help'
           ></Header>
-        : mode === 'config' && selectedProject ? <Header
+        : mode === 'info' && selectedProject ? <Header
             color='white'
             width={outputWidth}
-            text={`Active Configuration`}
+            text={`Task Information`}
           ></Header> : undefined
         }
         <ScrollableBox
@@ -269,7 +269,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
           text={
             mode === 'help' ? HELP :
             mode === 'stdio' ? selectedProject?.output() ?? '' :
-            mode === 'config' ? renderProjectConfig(workspace, selectedProject) : ''
+            mode === 'info' ? renderProjectInformation(workspace, selectedProject) : ''
           }
         ></ScrollableBox>
       </Box>
@@ -277,7 +277,7 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
   );
 };
 
-function renderProjectConfig(workspace: Workspace, project?: Project) {
+function renderProjectInformation(workspace: Workspace, project?: Project) {
   if (!project)
     return '';
   const deps = workspace.directDependencies(project);
