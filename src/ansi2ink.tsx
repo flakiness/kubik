@@ -3,13 +3,13 @@ import React, { JSX } from 'react';
 import { ANSIStyle, ANSIToken } from './ansiTokenizer.js';
 
 export class ANSI2Ink {
-  private _lines: JSX.Element[] = [];
+  private _lines: JSX.Element[][];
   private _currentLine: JSX.Element[] = [];
   private _currentLineText = '';
   private _tokens: ANSIToken[][] = [];
 
   constructor(private _lineWidth: number) {
-
+    this._lines = [this._currentLine];
   }
 
   lineWidth() {
@@ -20,8 +20,8 @@ export class ANSI2Ink {
     if (lineWidth === this._lineWidth)
       return;
     this._lineWidth = lineWidth;
-    this._lines = [];
     this._currentLine = [];
+    this._lines = [this._currentLine];
     this._currentLineText = '';
     const tokens = this._tokens;
     this._tokens = [];
@@ -29,13 +29,17 @@ export class ANSI2Ink {
       this.addTokens(t);
   }
 
-  lines(): JSX.Element[] {
-    return this._lines;
+  lineCount() {
+    return this._lines.length;
+  }
+
+  lines(from: number, to: number): JSX.Element[] {
+    return this._lines.slice(from, to).map((line, index) => <Text key={from + index}>{line}<Newline/></Text>);
   }
 
   private _flushCurrentLine() {
-    this._lines.push(<Text key={this._lines.length + ''}>{this._currentLine}<Newline/></Text>)
     this._currentLine = [];
+    this._lines.push(this._currentLine);
     this._currentLineText = '';
   }
 

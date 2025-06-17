@@ -105,27 +105,27 @@ const ScrollableBox: React.FC<{ text: string, width: number, height: number }> =
   if (newText)
     ansi2ink.addTokens(ansiTokenizer.addText(newText));
 
-  const allLines = ansi2ink.lines();
+  const lineCount = ansi2ink.lineCount();
 
   const normalizeScrollLine = (firstLineNumber: number) => {
     if (firstLineNumber < 0)
       firstLineNumber = 0;
-    if (allLines.length <= height)
+    if (lineCount <= height)
       return undefined;
-    if (firstLineNumber + height >= allLines.length)
+    if (firstLineNumber + height >= lineCount)
       return undefined;
     return firstLineNumber;
   }
 
-  const firstVisibleLineIndex = scrollTop ?? Math.max(allLines.length - height, 0);
-  const lines = allLines.slice(firstVisibleLineIndex, firstVisibleLineIndex + height);
+  const firstVisibleLineIndex = scrollTop ?? Math.max(lineCount - height, 0);
+  const lines = ansi2ink.lines(firstVisibleLineIndex, firstVisibleLineIndex + height);
 
   // --- Input Handling ---
   useInput((input, key) => {
     if (input === 'g') {
       setScrollTop(normalizeScrollLine(0));
     } else if (input === 'G') {
-      setScrollTop(normalizeScrollLine(allLines.length));
+      setScrollTop(normalizeScrollLine(lineCount));
     } else if ((input === 'u' && key.ctrl) || (key.shift && input === ' ')) {
       setScrollTop(normalizeScrollLine(firstVisibleLineIndex - (height >> 1)));
     } else if ((input === 'd' && key.ctrl) || (!key.shift && input === ' ')) {
@@ -144,7 +144,7 @@ const ScrollableBox: React.FC<{ text: string, width: number, height: number }> =
     <Box overflow="hidden" height="100%" width={1}>
       {renderScrollBar({
         height,
-        scrollHeight: allLines.length,
+        scrollHeight: lineCount,
         scrollTop: firstVisibleLineIndex,
         bgColor: 'gray',
         fgColor: 'gray',
@@ -176,7 +176,8 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
     });
     workspace.on('project_added', project => {
       project.on('build_status_changed', () => setProjects(workspace.bfsProjects()));
-      project.on('build_stdout', () => {
+      project.on('pid_changed', () => setProjects(workspace.bfsProjects()));
+      project.on('build_stdout', (text) => {
         setTick(Date.now());
       });
       project.on('build_stderr', () => {

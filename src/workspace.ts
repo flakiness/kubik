@@ -40,6 +40,7 @@ export const MSG_TASK_DONE = 'service started';
 
 type ProjectEvents = {
   'build_status_changed': [],
+  'pid_changed': [],
   'build_stdout': [string],
   'build_stderr': [string],
 }
@@ -242,17 +243,17 @@ export class Project extends EventEmitter<ProjectEvents> {
           this._onStdOut(`(process exited with code=${code})`);
         }
         this._killProcess();
-        this.emit('build_status_changed');
+        this.emit('pid_changed');
       });
       this._subprocess.on('error', error => {
         options.onComplete(false);
         this._onStdErr(error.message);
         this._stopTimestampMs = Date.now();
         this._killProcess();
-        this.emit('build_status_changed');
+        this.emit('pid_changed');
       });
-      // Emit "build_status_changed" since we created a subprocess, and our PID has changed.
-      this.emit('build_status_changed');
+      // Emit "pid_changed" since we created a subprocess, and our PID has changed.
+      this.emit('pid_changed');
     } catch (e) {
       this._output = `Failed to launch ${path.relative(process.cwd(), this._configPath)}\n`;
       if (e instanceof Error)
