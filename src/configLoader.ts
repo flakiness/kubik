@@ -25,7 +25,6 @@ export type ReadConfigResult = {
 };
 
 export async function readConfigTree(roots: AbsolutePath[]): Promise<Map<AbsolutePath, ReadConfigResult>> {
-  console.time('reading configs');
   const results = new Map<AbsolutePath, ReadConfigResult>();
 
   let configsToRead = [...roots];
@@ -41,7 +40,6 @@ export async function readConfigTree(roots: AbsolutePath[]): Promise<Map<Absolut
     }))).flat();
     configsToRead = newConfigPaths.filter(configPath => !results.has(configPath));
   }
-  console.timeEnd('reading configs');
   return results;
 }
 
