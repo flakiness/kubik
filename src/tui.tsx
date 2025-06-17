@@ -5,6 +5,7 @@ import path from 'path';
 import React, { JSX, useEffect, useState } from 'react';
 import { ANSI2Ink } from './ansi2ink.js';
 import { ANSITokenizer } from './ansiTokenizer.js';
+import { stripAnsi } from './utils.js';
 import { Project, Workspace } from './workspace.js';
 
 const getStatusColor = (project: Project) => {
@@ -46,6 +47,8 @@ ${chalk.bold('TUI Shortcuts')}
   ${chalk.yellow('g / G')}       scroll to top / bottom
   ${chalk.yellow('r')}           restart a task and all its dependencies
   ${chalk.yellow('s')}           save current task output to ./kubikstdoutstderr
+  ${chalk.yellow('S')}           save current task output without ANSI codes
+                                 to ./kubikstdoutstderr
   ${chalk.yellow('z')}           toggle tasks sidebar pane
   ${chalk.yellow('i')}           toggle task information
   ${chalk.yellow('?')}           toggle help
@@ -202,6 +205,8 @@ const App: React.FC<{ workspace: Workspace }> = ({ workspace }) => {
       setMode(mode === 'info' ? 'stdio' : 'info');
     } else if (input === 's') {
       fs.writeFileSync('./kubikstdoutstderr', selectedProject?.output() ?? '', 'utf8');
+    } else if (input === 'S') {
+      fs.writeFileSync('./kubikstdoutstderr', stripAnsi(selectedProject?.output() ?? ''), 'utf8');
     } else if (input === 'r' && selectedProject) {
       workspace.scheduleUpdate(selectedProject);
     } else if (input === 'p' || (key.tab && key.shift)) {
