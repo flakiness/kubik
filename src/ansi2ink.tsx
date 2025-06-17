@@ -6,7 +6,7 @@ export class ANSI2Ink {
   private _lines: JSX.Element[] = [];
   private _currentLine: JSX.Element[] = [];
   private _currentLineText = '';
-  private _tokens: ANSIToken[] = [];
+  private _tokens: ANSIToken[][] = [];
 
   constructor(private _lineWidth: number) {
 
@@ -23,7 +23,10 @@ export class ANSI2Ink {
     this._lines = [];
     this._currentLine = [];
     this._currentLineText = '';
-    this.addTokens(this._tokens);
+    const tokens = this._tokens;
+    this._tokens = [];
+    for (const t of tokens)
+      this.addTokens(t);
   }
 
   lines(): JSX.Element[] {
@@ -57,7 +60,7 @@ export class ANSI2Ink {
   addTokens(parsedText: ANSIToken[]) {
     if (!parsedText.length)
       return;
-    this._tokens.push(...parsedText);
+    this._tokens.push(parsedText);
     for (const { text, style } of parsedText) {
       // Simplify tab rendering; instead of tabbed columns, we simply replace all tabs with 8 spaces.
       const tokenLines = text.replaceAll('\t', '        ').split('\n');
