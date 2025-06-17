@@ -3,7 +3,8 @@ import fs from 'fs';
 import { Box, render, Text, useApp, useInput, useStdout } from 'ink';
 import path from 'path';
 import React, { JSX, useEffect, useState } from 'react';
-import { ansi2ink } from './ansi2ink.js';
+import { ANSI2Ink } from './ansi2ink.js';
+import { ANSITokenizer } from './ansiTokenizer.js';
 import { Project, Workspace } from './workspace.js';
 
 const getStatusColor = (project: Project) => {
@@ -94,7 +95,14 @@ const Header: React.FC<{ text: string, width: number, color: string, }> = ({ wid
 
 const ScrollableBox: React.FC<{ text: string, width: number, height: number }> = ({ width, height, text }) => {
   const [scrollTop, setScrollTop] = useState<number|undefined>(undefined);
-  const allLines = ansi2ink(text, width - 1);
+  const [ansiTokenizer] = useState<ANSITokenizer>(new ANSITokenizer());
+  const [ansi2ink] = useState<ANSI2Ink>(new ANSI2Ink(width - 1))
+  ansi2ink.setLineWidth(width - 1);
+  const newText = text.substring(ansiTokenizer.processedTextLength());
+  if (newText)
+    ansi2ink.addTokens(ansiTokenizer.addText(newText));
+
+  const allLines = ansi2ink.lines();
 
   const normalizeScrollLine = (firstLineNumber: number) => {
     if (firstLineNumber < 0)
