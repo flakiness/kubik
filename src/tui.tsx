@@ -98,12 +98,9 @@ const Header: React.FC<{ text: string, width: number, color: string, }> = ({ wid
 
 const ScrollableBox: React.FC<{ text: string, width: number, height: number }> = ({ width, height, text }) => {
   const [scrollTop, setScrollTop] = useState<number|undefined>(undefined);
-  const [ansiTokenizer] = useState<ANSITokenizer>(new ANSITokenizer());
   const [ansi2ink] = useState<ANSI2Ink>(new ANSI2Ink(width - 1))
   ansi2ink.setLineWidth(width - 1);
-  const newText = text.substring(ansiTokenizer.processedTextLength());
-  if (newText)
-    ansi2ink.addTokens(ansiTokenizer.addText(newText));
+  ansi2ink.setText(text);
 
   const lineCount = ansi2ink.lineCount();
 

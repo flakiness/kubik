@@ -37,16 +37,14 @@ const regex = /(\x1b\[(\d+(;\d+)*)m)|([^\x1b]+)/g;
 
 export class ANSITokenizer {
   private _style: ANSIStyle = {};
-  private _processedTextLength = 0;
 
-  processedTextLength() {
-    return this._processedTextLength;
+  reset() {
+    this._style = {};
   }
 
-  addText(text: string): ANSIToken[] {
+  tokenize(text: string): ANSIToken[] {
     if (!text)
       return [];
-    this._processedTextLength += text.length;
     const result: ANSIToken[] = [];
     let match;
     while ((match = regex.exec(text)) !== null) {
