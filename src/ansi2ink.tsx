@@ -80,7 +80,5 @@ export class ANSI2Ink {
         }
       }
     }
-    if (this._currentLineText)
-      this._flushCurrentLine();
   }
 }
