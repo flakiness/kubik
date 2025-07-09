@@ -4,7 +4,6 @@ import { Box, render, Text, useApp, useInput, useStdout } from 'ink';
 import path from 'path';
 import React, { JSX, useEffect, useState } from 'react';
 import { ANSI2Ink } from './ansi2ink.js';
-import { ANSITokenizer } from './ansiTokenizer.js';
 import { stripAnsi } from './utils.js';
 import { Project, Workspace } from './workspace.js';
 
@@ -121,7 +120,7 @@ const ScrollableBox: React.FC<{ text: string, width: number, height: number }> =
   useInput((input, key) => {
     if (input === 'g') {
       setScrollTop(normalizeScrollLine(0));
-    } else if (input === 'G') {
+    } else if (input === 'G' || key.return) {
       setScrollTop(normalizeScrollLine(lineCount));
     } else if ((input === 'u' && key.ctrl) || (key.shift && input === ' ')) {
       setScrollTop(normalizeScrollLine(firstVisibleLineIndex - (height >> 1)));
