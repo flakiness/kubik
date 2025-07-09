@@ -67,7 +67,7 @@ type TaskTreeEvents<TASK_ID extends string> = {
  * Task tree is an orchestration engine. It is given a set of tasks with their IDs and their
  * inter-dependencies, and its goal to run these tasks to a completion.
  * 
- * TaskTree doesn't know how to run tasks and it doesn't know about task inputs. Instead, its client
+ * TaskTree doesn't know how to run tasks and it doesn't know about task inputs. Instead, its clients
  * are requested to run tasks (via provided callback) and they should notify TaskTree about task input
  * changes via the `taskTree.markChanged(taskId)` method.
  * 
