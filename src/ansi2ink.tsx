@@ -1,6 +1,6 @@
 import { Newline, Text } from 'ink';
 import React, { JSX } from 'react';
-import { ANSIToken, ANSITokenizer } from './ansiTokenizer.js';
+import { ANSIToken, ANSITokenizer, ANSIStyle } from './ansiTokenizer.js';
 
 function renderToken({ style, text }: ANSIToken): JSX.Element {
   return <Text
@@ -75,9 +75,30 @@ export class ANSI2Ink {
     }
   }
 
+  private _tab(style: ANSIStyle) {
+    const tabSize = 8 - (this._lastLineLength % 8)
+    if (this._lastLineLength + tabSize > this._lineWidth)
+      return;
+    this._lines[this._lines.length - 1].push({
+      style,
+      text: ' '.repeat(tabSize),
+    });
+    this._lastLineLength += tabSize;
+  }
+
   private _newLine() {
     this._lines.push([]);
     this._lastLineLength = 0;
+  }
+
+  private _addLine({ text, style }: ANSIToken) {
+    const tabbedTokens = text.split('\t');
+    const lastToken = tabbedTokens.pop()!;
+    for (const t of tabbedTokens) {
+      this._addTokenWrapped({ style, text: t });
+      this._tab(style);
+    }
+    this._addTokenWrapped({ style, text: lastToken });
   }
 
   private _layout(tokens: ANSIToken[]) {
@@ -87,10 +108,10 @@ export class ANSI2Ink {
       if (lastLine === undefined)
         continue;
       for (const line of lines) {
-        this._addTokenWrapped({ style: token.style, text: line });
+        this._addLine({ style: token.style, text: line });
         this._newLine();
       }
-      this._addTokenWrapped({ style: token.style, text: lastLine });
+      this._addLine({ style: token.style, text: lastLine });
     }
   }
 
