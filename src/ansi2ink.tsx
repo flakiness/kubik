@@ -1,6 +1,6 @@
 import { Newline, Text } from 'ink';
 import React, { JSX } from 'react';
-import { ANSIToken, ANSITokenizer, ANSIStyle } from './ansiTokenizer.js';
+import { ANSIStyle, ANSIToken, ANSITokenizer } from './ansiTokenizer.js';
 
 function renderToken({ style, text }: ANSIToken): JSX.Element {
   return <Text
@@ -63,14 +63,14 @@ export class ANSI2Ink {
       const freeLineSpace = this._lineWidth - this._lastLineLength;
       this._lines[this._lines.length - 1].push({
         style,
-        text: text.substring(0, freeLineSpace),
+        text: deslice(text.substring(0, freeLineSpace)),
       });
       text = text.substring(freeLineSpace);
       this._newLine();
     }
 
     if (text.length) {
-      this._lines[this._lines.length - 1].push({ style, text });
+      this._lines[this._lines.length - 1].push({ style, text: deslice(text) });
       this._lastLineLength += text.length;
     }
   }
@@ -126,4 +126,13 @@ export class ANSI2Ink {
   lines(from: number, to: number): JSX.Element[] {
     return this._lines.slice(from, to).map((line, index) => renderLine(line, from + index));
   }
+}
+
+/**
+ * We want to avoid retaining the parent string when tokenizing, so here's the
+ * trick to de-slice strings.
+ * See https://github.com/nodejs/help/issues/711
+ */
+function deslice(s: string): string {
+  return Buffer.from(s).toString();
 }
