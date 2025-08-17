@@ -20,6 +20,12 @@ export type TaskOptions = {
    * Script's dependencies, that should be executed before running this script.
    */
   deps?: string | string[],
+  /**
+   * Custom environment to use when running this task.
+   * Very handy to pass in `NODE_OPTIONS: '--inspect'` or similar.
+   * Note that these ENV variables take precedance over the `--env-file` variables.
+   */
+  env?: Record<string,string|undefined>;
 }
 
 export type TaskUtils = {

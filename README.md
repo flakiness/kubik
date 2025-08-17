@@ -322,6 +322,9 @@ const {
   watch: ['./src'], // all the paths are resolved relative to **this** script
   ignore: ['./src/generated'], // relative to **this** script
   deps: ['../third-party/build.mjs'], // relative to **this** script
+  env: {
+    NODE_OPTIONS: '--inspect', // custom env variables to pass to this script
+  }
 });
 
 // Use $ to run commands, e.g. typescript.

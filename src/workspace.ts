@@ -67,6 +67,8 @@ export class Project extends EventEmitter<ProjectEvents> {
   private _isLongRunningProcess: boolean = false;
   private _processExitCode?: number|null;
 
+  private _customEnv: Record<string, string|undefined> = {};
+
   constructor(taskTree: TaskTree<AbsolutePath>, configPath: AbsolutePath, nodeForkOptions?: NodeForkOptions) {
     super();
     this.setMaxListeners(Infinity);
@@ -137,6 +139,7 @@ export class Project extends EventEmitter<ProjectEvents> {
 
   setConfiguration(result: ReadConfigResult) {
     this._customName = result.config?.name;
+    this._customEnv = result.config?.env ?? {};
 
     if (this._configurationError !== result.error) {
       this._configurationError = result.error;
@@ -203,6 +206,7 @@ export class Project extends EventEmitter<ProjectEvents> {
         execArgv.push(`--env-file=${this._nodeForkOptions.envFile}`);
       const env: Record<string, string|undefined> = {
         ...process.env,
+        ...this._customEnv,
         KUBIK_TUI: this._fsWatch ? '1' : undefined,
         KUBIK_RUNNER: '1',
       };

@@ -16,6 +16,7 @@ export type Config = {
   watch: AbsolutePath[],
   ignore: AbsolutePath[],
   deps: AbsolutePath[],
+  env: Record<string, string|undefined>,
 }
 
 export type ReadConfigResult = {
@@ -64,7 +65,7 @@ async function readSingleConfig(configPath: AbsolutePath): Promise<ReadConfigRes
     return { configPath, error: 'failed to load configuration\n' + stdio};
   }
   try {
-    let { name, watch = [], ignore = [], deps = [] } = JSON.parse(stdout) as TaskOptions;
+    let { name, watch = [], ignore = [], deps = [], env = {} } = JSON.parse(stdout) as TaskOptions;
     if (!Array.isArray(watch))
       watch = [watch];
     if (!Array.isArray(ignore))
@@ -80,6 +81,7 @@ async function readSingleConfig(configPath: AbsolutePath): Promise<ReadConfigRes
         watch: watch.map(resolveWRTConfig),
         ignore: ignore.map(resolveWRTConfig),
         deps: deps.map(resolveWRTConfig),
+        env,
       }
     };
   } catch (e) {
