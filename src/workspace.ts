@@ -105,6 +105,9 @@ export class Project extends EventEmitter<ProjectEvents> {
   async startFileWatch(toWatch: AbsolutePath[], toIgnore: AbsolutePath[], onFilesChanged?: (project: Project, filePath: AbsolutePath) => void) {
     await this.stopFileWatch();
 
+    const usePolling = !!process.env.CI;
+    const pollingIntervalMs = 100;
+
     // Save arguments for the watch dog to show them later in the TUI.
     this._watchPaths = toWatch.slice();
     this._ignorePaths = toIgnore.slice();
@@ -123,8 +126,8 @@ export class Project extends EventEmitter<ProjectEvents> {
       // chokidar v4 relies on native fs.watch, whose events are routinely dropped
       // or delayed on CI filesystems (Docker overlayfs, VMs, macOS runners). Fall
       // back to mtime polling there so watch-mode changes are observed reliably.
-      usePolling: !!process.env.CI,
-      interval: 100,
+      usePolling,
+      interval: pollingIntervalMs,
     });
     this._fsWatch.on('all', (eventType: string, filePath?: string) => {
       if (filePath)
@@ -137,6 +140,11 @@ export class Project extends EventEmitter<ProjectEvents> {
     // baselines for every watched path. Otherwise a change made right after this
     // call can land before the watcher is ready and be silently dropped.
     await new Promise<void>(resolve => this._fsWatch!.once('ready', () => resolve()));
+    // With polling, chokidar can report "ready" before the first polling cycle is
+    // fully established on every platform. Let one extra cycle pass before callers
+    // are allowed to react to workspace status by changing watched files.
+    if (usePolling)
+      await new Promise<void>(resolve => setTimeout(resolve, pollingIntervalMs));
   }
 
   async stopFileWatch() {
