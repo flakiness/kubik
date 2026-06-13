@@ -5,13 +5,24 @@ import { ClientRequest, KUBIK_VERSION, ServerMessage, readMessages, writeMessage
 import { daemonSocketDir, daemonSocketPath } from "./daemonRegistry.js";
 import { Project, Workspace } from "./workspace.js";
 
-export async function startDaemonServer(workspace: Workspace): Promise<void> {
+/**
+ * Starts the watchdog server and returns a `stop` function that closes the
+ * server and tears down any live client connections. Closing matters because a
+ * listening `net.Server` (and any open socket) keeps the event loop alive, so
+ * without it the watch command would never terminate after the TUI exits.
+ */
+export async function startDaemonServer(workspace: Workspace): Promise<() => void> {
   const socketPath = daemonSocketPath(process.pid);
   await fs.promises.mkdir(daemonSocketDir(), { recursive: true });
   // A previous process with a recycled pid might have left a socket behind.
   await fs.promises.unlink(socketPath).catch(() => {});
 
-  const server = net.createServer(socket => new ClientConnection(workspace, socket));
+  const connections = new Set<net.Socket>();
+  const server = net.createServer(socket => {
+    connections.add(socket);
+    socket.on('close', () => connections.delete(socket));
+    new ClientConnection(workspace, socket);
+  });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(socketPath, resolve);
@@ -25,6 +36,13 @@ export async function startDaemonServer(workspace: Workspace): Promise<void> {
   };
   process.once('SIGTERM', terminate);
   process.once('SIGINT', terminate);
+
+  return () => {
+    server.close();
+    for (const socket of connections)
+      socket.destroy();
+    connections.clear();
+  };
 }
 
 class ClientConnection {

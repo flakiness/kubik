@@ -74,12 +74,12 @@ async function connectToDaemon(socketPath: string): Promise<DaemonConnection|und
       resolve(undefined);
     });
     socket.on('connect', () => writeMessage(socket, { method: 'handshake' } satisfies ClientRequest));
-    readMessages(socket, message => {
+    readMessages(socket, (message: ServerMessage) => {
       if (connection.onMessage) {
-        connection.onMessage(message as ServerMessage);
+        connection.onMessage(message);
         return;
       }
-      if ((message as ServerMessage).type !== 'hello')
+      if (message.type !== 'hello')
         return;
       clearTimeout(timeout);
       connection.pid = message.pid;
@@ -106,6 +106,13 @@ async function runOnDaemon(daemon: DaemonConnection, roots: AbsolutePath[], fres
         finish(1);
       }
     };
+    // The watchdog may have dropped between the handshake and now. If so, the
+    // `run` write below would silently no-op on the destroyed socket and we'd
+    // wait forever; settle straight away instead.
+    if (daemon.socket.destroyed) {
+      daemon.onClose();
+      return;
+    }
     daemon.onMessage = message => {
       if (message.type === 'task_status') {
         logTaskStatus(message.name, message.status, message.durationMs, message.upToDate);

@@ -313,7 +313,7 @@ ${project.introspectIgnorePaths().map(p => `- ${path.relative(process.cwd(), p)}
 
 }
 
-export function startWatchApp(workspace: Workspace) {
+export function startWatchApp(workspace: Workspace, onExit?: () => void) {
   // Enter alternative buffer.
   process.stdout.write('\x1b[?1049h');
   const instance = render(<App workspace={workspace}/>, {
@@ -322,6 +322,7 @@ export function startWatchApp(workspace: Workspace) {
   instance.waitUntilExit().then(() => {
     process.stdout.write('\x1b[?1049l');
     workspace.stop();
+    onExit?.();
   });
 }
 

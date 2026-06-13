@@ -46,13 +46,15 @@ program
       watchMode: options.watch ?? false,
     });
     if (options.watch) {
+      let stopDaemon: (() => void) | undefined;
       if (options.daemon !== false) {
-        await startDaemonServer(workspace).catch(e => {
+        stopDaemon = await startDaemonServer(workspace).catch(e => {
           console.error(chalk.red(`[kubik] Failed to start watchdog server: ${e instanceof Error ? e.message : e}`));
+          return undefined;
         });
       }
       if (process.stdout.isTTY)
-        startWatchApp(workspace);
+        startWatchApp(workspace, stopDaemon);
       else
         cliLogger(workspace);
     } else {
