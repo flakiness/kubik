@@ -2,6 +2,7 @@
   "name": "kubik",
   "type": "module",
   "version": "0.24.0",
+  "packageManager": "pnpm@11.5.0",
   "description": "",
   "main": "index.js",
   "bin": {
