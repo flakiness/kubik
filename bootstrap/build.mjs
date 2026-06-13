@@ -1,4 +1,4 @@
-#!/usr/bin/env npx kubik
+#!/usr/bin/env -S pnpm exec kubik
 
 import path from 'path';
 import esbuild from 'esbuild';

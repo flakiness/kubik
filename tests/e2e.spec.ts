@@ -7,6 +7,13 @@ import url from 'url';
 const __filename = url.fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Invoke the built CLI directly by path. On a clean machine there is no
+// globally-linked `kubik` bin (pnpm does not self-link the root package's own
+// bin), so `npx kubik` / `pnpm exec kubik` cannot resolve it. The asset's
+// `import 'kubik'` still resolves via Node's package self-reference, since the
+// test output dir lives inside this repo.
+const kubikCli = path.join(__dirname, '..', 'lib', 'cli.js');
+
 function asset(aPath: string) {
   return test.info().outputPath(aPath);
 }
@@ -31,12 +38,12 @@ const e2e = test.extend<{
 
 e2e('should return zero exit code for passing builds', async ({ $ }) => {
   await bootstrapAssets('simple');
-  const { exitCode } = await $({ reject: false })`npx --no-install kubik ./a.mjs`;
+  const { exitCode } = await $({ reject: false })`${process.execPath} ${kubikCli} ./a.mjs`;
   expect(exitCode).toBe(0);
 });
 
 e2e('should return non-zero code for failing builds', async ({ $ }) => {
   await bootstrapAssets('no-deps');
-  const { exitCode } = await $({ reject: false })`npx --no-install kubik ./fail.mjs`;
+  const { exitCode } = await $({ reject: false })`${process.execPath} ${kubikCli} ./fail.mjs`;
   expect(exitCode).toBe(1);
 });
