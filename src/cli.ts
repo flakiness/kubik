@@ -4,6 +4,8 @@ import chalk, { supportsColor } from "chalk";
 import { Option, program } from "commander";
 import path from "path";
 import { AbsolutePath } from "./configLoader.js";
+import { tryDelegateRun } from "./daemonClient.js";
+import { startDaemonServer } from "./daemonServer.js";
 import { startWatchApp } from "./tui.js";
 import { timeInSeconds } from "./utils.js";
 import { Project, Workspace } from "./workspace.js";
@@ -13,9 +15,27 @@ program
   .addOption(new Option(`-j, --jobs <number>`, `Allow N jobs at once; infinite jobs with no arg.`).argParser(parseInt))
   .option('-w, --watch', 'Watch files for changes')
   .option('-e, --env-file <env file>', 'Use environment file for all tasks')
+  .option('--fresh', 'When running via a watchdog, restart the tasks and all their dependencies')
+  .option('--no-daemon', 'Do not delegate the build to a running watchdog')
   .arguments('<files...>')
-  .action((files: string[], options: { jobs?: number, envFile?: string, watch?: boolean }) => {
+  .action(async (files: string[], options: { jobs?: number, envFile?: string, watch?: boolean, fresh?: boolean, daemon?: boolean }) => {
     const roots = files.map(file => path.resolve(process.cwd(), file)) as AbsolutePath[];
+
+    // When a watchdog already watches these tasks, force-restart them there
+    // and stream the results instead of building a second time.
+    if (!options.watch && options.daemon !== false) {
+      const ignoredFlags: string[] = [];
+      if (options.jobs !== undefined)
+        ignoredFlags.push('--jobs');
+      if (options.envFile)
+        ignoredFlags.push('--env-file');
+      const exitCode = await tryDelegateRun(roots, { fresh: !!options.fresh, ignoredFlags });
+      if (exitCode !== undefined) {
+        process.exitCode = exitCode;
+        return;
+      }
+    }
+
     const workspace = new Workspace({
       roots,
       jobs: options.jobs ?? Infinity,
@@ -25,13 +45,22 @@ program
       },
       watchMode: options.watch ?? false,
     });
-    if (options.watch)
-      startWatchApp(workspace)
-    else
+    if (options.watch) {
+      if (options.daemon !== false) {
+        await startDaemonServer(workspace).catch(e => {
+          console.error(chalk.red(`[kubik] Failed to start watchdog server: ${e instanceof Error ? e.message : e}`));
+        });
+      }
+      if (process.stdout.isTTY)
+        startWatchApp(workspace);
+      else
+        cliLogger(workspace);
+    } else {
       cliLogger(workspace);
+    }
   });
 
-program.parse();
+await program.parseAsync();
 
 function cliLogger(workspace: Workspace) {
   workspace.on('project_added', project => {

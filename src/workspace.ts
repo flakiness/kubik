@@ -343,6 +343,27 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     return taskIds.map(taskId => this._projects.get(taskId)!);
   }
 
+  projectForPath(configPath: AbsolutePath): Project|undefined {
+    return this._projects.get(configPath);
+  }
+
+  /**
+   * The project and all of its transitive dependencies. Empty if the project
+   * is not part of the task tree (e.g. when the tree was cleared due to a cycle).
+   */
+  subtreeProjects(project: Project): Project[] {
+    const taskIds = this._taskTree.subtree(project.configPath());
+    return taskIds.map(taskId => this._projects.get(taskId)).filter((project): project is Project => !!project);
+  }
+
+  /**
+   * Whether there are file system changes or config re-reads that were scheduled
+   * but not yet incorporated into the task tree.
+   */
+  hasPendingUpdate(): boolean {
+    return !!this._updateData;
+  }
+
   directDependencies(project: Project): Project[] {
     const taskIds = this._taskTree.children(project.configPath());
     return taskIds.map(taskId => this._projects.get(taskId)!);
