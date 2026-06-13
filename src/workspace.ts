@@ -120,6 +120,11 @@ export class Project extends EventEmitter<ProjectEvents> {
       ignored: this._ignorePaths,
       persistent: true,
       ignoreInitial: true,
+      // chokidar v4 relies on native fs.watch, whose events are routinely dropped
+      // or delayed on CI filesystems (Docker overlayfs, VMs, macOS runners). Fall
+      // back to mtime polling there so watch-mode changes are observed reliably.
+      usePolling: !!process.env.CI,
+      interval: 100,
     });
     this._fsWatch.on('all', (eventType: string, filePath?: string) => {
       if (filePath)
