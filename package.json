@@ -29,8 +29,8 @@
     "node": ">=22"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Degu Labs, Inc",
+  "license": "MIT",
   "devDependencies": {
     "@playwright/test": "^1.48.2",
     "@types/node": "^22.9.0",
