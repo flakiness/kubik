@@ -130,6 +130,10 @@ export class Project extends EventEmitter<ProjectEvents> {
       if (filePath)
         onFilesChanged?.call(null, this, filePath as AbsolutePath);
     });
+    // Resolve only once chokidar has finished its initial scan and recorded
+    // baselines for every watched path. Otherwise a change made right after this
+    // call can land before the watcher is ready and be silently dropped.
+    await new Promise<void>(resolve => this._fsWatch!.once('ready', () => resolve()));
   }
 
   async stopFileWatch() {
@@ -424,7 +428,6 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
   }
 
   private async _readConfiguration() {
-    let time = Date.now();
     const roots = this._options.roots.map(root => path.resolve(process.cwd(), root) as AbsolutePath);
     const configs = await readConfigTree(roots);
     const projectTree = new Multimap<AbsolutePath, AbsolutePath>();
@@ -433,14 +436,14 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
       projectTree.setAll(key, children);
     }
 
+    // Update the task tree up front so that Project.status() is valid as soon as
+    // 'project_added' fires during project creation below. Publishing the cycle
+    // *error*, however, is deferred until after watchers are armed (see below).
     const cycle = TaskTree.findDependencyCycle(projectTree);
-    if (cycle) {
-      this._setWorkspaceError(renderCycleError(cycle));
+    if (cycle)
       this._taskTree.clear();
-    } else {
-      this._setWorkspaceError(undefined);
+    else
       this._taskTree.setTasks(projectTree);
-    }
 
     let hasProjectChanges = false;
 
@@ -455,6 +458,9 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
     }
 
     // Create new projects and update configuration for existing projects.
+    // Arm file watchers *before* publishing workspace status below: callers (tests
+    // and the TUI) react to status changes by mutating files, and that change must
+    // not race ahead of the watcher being ready, or it will be missed entirely.
     for (const config of configs.values()) {
       let project = this._projects.get(config.configPath);
       if (!project) {
@@ -471,6 +477,11 @@ export class Workspace extends EventEmitter<WorkspaceEvents> {
         }));
       }
     }
+
+    // Publish the workspace error only now that watchers are live, so callers that
+    // react to the status change can't mutate a watched file before its watcher is
+    // ready (which would drop the change and hang watch-mode flows on CI).
+    this._setWorkspaceError(cycle ? renderCycleError(cycle) : undefined);
 
     if (hasProjectChanges)
       this.emit('projects_changed');
