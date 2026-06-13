@@ -14,9 +14,9 @@
   },
   "homepage": "https://github.com/flakiness/kubik",
   "scripts": {
-    "build": "cd ./bootstrap && ./build.mjs",
-    "watch": "cd ./bootstrap && ./build.mjs -w",
-    "test": "npx playwright test"
+    "build": "pnpm -C bootstrap exec kubik build.mjs",
+    "watch": "pnpm -C bootstrap exec kubik build.mjs -w",
+    "test": "playwright test"
   },
   "exports": {
     ".": {
@@ -29,8 +29,8 @@
     "node": ">=22"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Degu Labs, Inc",
+  "license": "MIT",
   "devDependencies": {
     "@playwright/test": "^1.48.2",
     "@types/node": "^22.9.0",

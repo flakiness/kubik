@@ -83,6 +83,6 @@ export class Task {
    */
   static done() {
     if (process.env.KUBIK_RUNNER)
-      process.send?.call(process, MSG_TASK_DONE);
+      process.send?.(MSG_TASK_DONE);
   }
 }
