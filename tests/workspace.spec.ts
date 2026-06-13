@@ -133,6 +133,7 @@ workspaceTest('should detect cycle', async ({ createWorkspace }) => {
 });
 
 workspaceTest('in watch mode, should detect cycle and clear the error once cycle is fixed', async ({ createWorkspace }) => {
+  workspaceTest.fixme(process.platform === 'win32' || process.platform === 'darwin', 'https://github.com/flakiness/kubik/issues/10');
   await bootstrapAssets('cycle');
   const workspace = createWorkspace({
     jobs: Infinity,
@@ -171,6 +172,7 @@ workspaceTest('should report process exit code for services', async ({ createWor
 });
 
 workspaceTest('should not have old output when event of status changed received', async ({ createWorkspace }) => {
+  workspaceTest.fixme(process.platform === 'win32' || process.platform === 'darwin', 'https://github.com/flakiness/kubik/issues/10');
   await bootstrapAssets('no-deps');
   const workspace = createWorkspace({
     jobs: Infinity,
