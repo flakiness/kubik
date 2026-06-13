@@ -271,6 +271,28 @@ export class TaskTree<TASK_ID extends string = string> extends EventEmitter<Task
     return result;
   }
 
+  /**
+   * Returns the task and all of its transitive dependencies, in BFS order.
+   * Returns an empty array if the task is not part of the tree.
+   */
+  subtree(taskId: TASK_ID): TASK_ID[] {
+    const root = this._tasks.get(taskId);
+    if (!root)
+      return [];
+    const result: TASK_ID[] = [];
+    const visited = new Set<Task<TASK_ID>>();
+    const queue: Task<TASK_ID>[] = [root];
+    while (queue.length) {
+      const task = queue.shift()!;
+      if (visited.has(task))
+        continue;
+      visited.add(task);
+      result.push(task.taskId);
+      queue.push(...task.children);
+    }
+    return result;
+  }
+
   children(taskId: TASK_ID): TASK_ID[] {
     const task = this._tasks.get(taskId);
     assert(task);

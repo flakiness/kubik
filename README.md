@@ -14,6 +14,7 @@ Kubik supports running tasks with different parallelization modes and has a buil
 * [Long-running processes](#long-running-processes)
 * [TypeScript Support](#typescript-support)
 * [Kubik TUI](#kubik-tui)
+* [Watchdog Delegation](#watchdog-delegation)
 * [Colors in Kubik TUI](#colors-in-kubik-tui)
 * [Parallelization](#parallelization)
 * [Environment Files](#environment-files)
@@ -226,6 +227,45 @@ Task.init(import.meta, {
 > - Not properly ignoring generated files
 >
 > Use the `ignore` option to mitigate this behavior.
+
+## Watchdog Delegation
+
+A watch-mode Kubik (the "watchdog") doubles as a build daemon. While it is running, any
+plain `npx kubik <file>` invocation that targets a task from the watchdog's task tree is
+automatically *delegated*: instead of building a second time, Kubik force-restarts the
+task inside the watchdog, reuses its green dependencies, streams the output, and exits
+with the build's status.
+
+```sh
+# Terminal 1 (or a system service): keep the tree built.
+npx kubik -w ./build.mjs
+
+# Terminal 2: restarts ./build.mjs inside the watchdog and streams results.
+npx kubik ./build.mjs
+```
+
+This makes the plain `npx kubik <file>` command a cheap "rebuild and show me the result"
+primitive — handy for humans, and especially for AI agents that verify their edits: tell
+your agent to run `npx kubik ./build.mjs` after editing, and it will transparently get
+fast incremental results whenever a watchdog is up, and a regular standalone build otherwise.
+
+How it works:
+
+* The watchdog listens on a unix socket in `~/.kubik/daemons/` (override with the
+  `KUBIK_DAEMON_DIR` environment variable). Stale sockets are cleaned up automatically.
+* Delegation requires the exact same Kubik version on both sides; otherwise the build
+  runs locally.
+* When `kubik -w` runs without a terminal (e.g. as a system service), it skips the TUI
+  and logs plain text — so a watchdog can run under launchd/systemd.
+
+Delegated runs restart the requested task and retry its failed dependencies, while
+dependencies that are already green are reused as-is (reported as `Up-to-date`).
+A few flags control this behavior:
+
+* `--fresh` restarts the task *and all of its transitive dependencies* from scratch.
+* `--no-daemon` skips delegation and always builds locally.
+* `-j` and `--env-file` only apply to local builds; the watchdog's own settings win
+  when a run is delegated.
 
 ## Colors in Kubik TUI
 
