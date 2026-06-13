@@ -128,10 +128,7 @@ export class Project extends EventEmitter<ProjectEvents> {
     });
     this._fsWatch.on('all', (eventType: string, filePath?: string) => {
       if (filePath)
-        // chokidar v4 reports paths with forward slashes even on Windows. Resolve
-        // back to a native absolute path so equality checks against config paths
-        // (built via path.resolve, i.e. backslashes on Windows) hold cross-platform.
-        onFilesChanged?.call(null, this, path.resolve(filePath) as AbsolutePath);
+        onFilesChanged?.call(null, this, filePath as AbsolutePath);
     });
     // Resolve only once chokidar has finished its initial scan and recorded
     // baselines for every watched path. Otherwise a change made right after this
